@@ -93,7 +93,12 @@ func SyncRunners(cfg Config, ms MachineState, registerToken, removeToken string)
 }
 
 func main() {
-	cfg, err := NewConfig("./config.yaml")
+	configPath := flag.String("config", "config.yaml", "path to the configuration file")
+	registerToken := flag.String("github-register-token", "", "token to register github actions runner at the organization level")
+	removeToken := flag.String("github-remove-token", "", "token to remove github actions runner")
+	flag.Parse()
+
+	cfg, err := NewConfig(*configPath)
 	if err != nil {
 		log.Fatalf("error loading config: %s", err)
 	}
@@ -104,11 +109,16 @@ func main() {
 	}
 	log.Printf("machine state: %+v", ms)
 
-	registerToken := flag.String("github-register-token", "", "token to register github actions runner at the organization level")
-	removeToken := flag.String("github-remove-token", "", "token to remove github actions runner")
-	flag.Parse()
+	rt := *registerToken
+	if rt == "" {
+		rt = os.Getenv("GITHUB_REGISTER_TOKEN")
+	}
+	rmt := *removeToken
+	if rmt == "" {
+		rmt = os.Getenv("GITHUB_REMOVE_TOKEN")
+	}
 
-	if err := SyncRunners(cfg, ms, *registerToken, *removeToken); err != nil {
+	if err := SyncRunners(cfg, ms, rt, rmt); err != nil {
 		log.Printf("error synchronizing runners: %v", err)
 	}
 }

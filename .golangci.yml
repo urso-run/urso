@@ -1,0 +1,168 @@
+version: "2"
+run:
+  timeout: 3m
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - copyloopvar
+    - dogsled
+    - dupl
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - funcorder
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
+    - govet
+    - iface
+    - ineffassign
+    - importas
+    - inamedparam
+    - intrange
+    - loggercheck
+    - maintidx
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - musttag
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - testableexamples
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+    # disabled
+    #- canonicalheader
+    #- containedctx
+    #- contextcheck
+    #- decorder
+    #- depguard
+    #- dupword
+    #- err113
+    #- errchkjson
+    #- exhaustruct
+    #- forcetypeassert
+    #- ginkgolinter
+    #- gochecknoglobals
+    #- gochecknoinits
+    #- godot
+    #- godox
+    #- goheader
+    #- gomodguard
+    #- grouper
+    #- interfacebloat
+    #- ireturn
+    #- lll
+    #- nilnil
+    #- nlreturn
+    #- nolintlint
+    #- nonamedreturns
+    #- paralleltest
+    #- promlinter
+    #- protogetter
+    #- recvcheck
+    #- tagalign
+    #- tagliatelle
+    #- testpackage
+    #- varnamelen
+    #- wrapcheck
+    #- wsl
+    #- zerologlint
+  settings:
+    gocognit:
+      min-complexity: 20
+    gocyclo:
+      min-complexity: 20
+    inamedparam:
+      skip-single-param: true
+    mnd:
+      ignored-functions:
+        - os.Chmod
+        - os.Mkdir.*
+        - os.OpenFile
+        - os.WriteFile
+        - strconv.Parse*
+        - strconv.Format*
+        - strings.SplitN
+    nakedret:
+      max-func-lines: 0
+    funlen:
+      lines: 100
+      ignore-comments: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Dependency injection files.
+      - path: cmd/(.*)
+        linters:
+          - funlen
+      # Unit tests.
+      - path: (.+)_test\.go
+        linters:
+          - dupl
+          - goconst
+          - gosec
+          - funlen
+          - noctx
+      # Integration tests.
+      - path: test/(.+)
+        linters:
+          - gosec
+formatters:
+  enable:
+    - gci
+    - gofmt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(go.tradeforge.dev/fmp)
+      custom-order: true
+  exclusions:
+    generated: lax
