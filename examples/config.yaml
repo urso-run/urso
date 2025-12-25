@@ -1,0 +1,12 @@
+rootDir: urso-run
+
+runners:
+  - name: first
+    group: Default
+    url: https://github.com/repeat-dev
+    labels: ["repeat-dev"]
+
+  - name: second
+    group: Default
+    url: https://github.com/repeat-dev
+    labels: ["repeat-dev"]
