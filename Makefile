@@ -1,6 +1,9 @@
+build:
+	go build -o ./bin/urso ./cmd/urso
+
 .PHONY: test
 test:
-	go test -cpu 24 -race -count=1 -timeout=30s ./...
+	go test -race -count=1 -timeout=30s ./...
 
 tidy:
 	go mod tidy -v
@@ -10,5 +13,5 @@ vet:
 	go vet ./...
 
 .PHONY: lint
-lint: bin/golangci-lint
+lint:
 	golangci-lint run --fix

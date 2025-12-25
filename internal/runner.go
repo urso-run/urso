@@ -1,9 +1,11 @@
-package main
+package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,6 +13,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+)
+
+const (
+	ArchiveFilename = "actions-runner.tar.gz"
+
+	RequestTimeoutSeconds = 30
+	CommandTimeoutSeconds = 30
 )
 
 type releaseResponse struct {
@@ -22,7 +32,19 @@ type releaseResponse struct {
 }
 
 func GetLatestRunnerURL() (string, error) {
-	r, err := http.Get("https://api.github.com/repos/actions/runner/releases/latest")
+	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeoutSeconds*time.Second)
+	defer cancel()
+
+	url := "https://api.github.com/repos/actions/runner/releases/latest"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("new request: %w", err)
+	}
+
+	c := http.Client{
+		Timeout: RequestTimeoutSeconds * time.Second,
+	}
+	r, err := c.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch latest release: %w", err)
 	}
@@ -63,14 +85,17 @@ func GetRunnerArchive(dstDir string) (string, error) {
 		return "", fmt.Errorf("error getting latest runner url: %w", err)
 	}
 
-	archive := filepath.Join(dstDir, archiveFilename)
+	archive := filepath.Join(dstDir, ArchiveFilename)
 	out, err := os.Create(archive)
 	if err != nil {
 		return "", fmt.Errorf("error creating file: %w", err)
 	}
 	defer out.Close()
 
-	req, err := http.NewRequest("GET", url, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), RequestTimeoutSeconds*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("new request: %w", err)
 	}
@@ -123,7 +148,10 @@ func CreateRunner(rootDir string, cfg RunnerConfig, archive string, token string
 }
 
 func ExtractRunner(archivePath, destDir string) error {
-	cmd := exec.Command("tar", "-xzf", archivePath, "-C", destDir)
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -146,7 +174,10 @@ func ConfigureRunner(dir string, cfg RunnerConfig, token string) error {
 		args = append(args, "--labels", strings.Join(cfg.Labels, ","))
 	}
 
-	cmd := exec.Command("./config.sh", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "./config.sh", args...)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -155,7 +186,10 @@ func ConfigureRunner(dir string, cfg RunnerConfig, token string) error {
 
 func InstallRunnerSvc(dir string) error {
 	// ./svc.sh install
-	cmd := exec.Command("./svc.sh", "install")
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "./svc.sh", "install")
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -164,7 +198,10 @@ func InstallRunnerSvc(dir string) error {
 
 func UninstallRunnerSvc(dir string) error {
 	// ./svc.sh uninstall
-	cmd := exec.Command("./svc.sh", "uninstall")
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "./svc.sh", "uninstall")
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -173,7 +210,10 @@ func UninstallRunnerSvc(dir string) error {
 
 func StartRunnerSvc(dir string) error {
 	// ./svc.sh start
-	cmd := exec.Command("./svc.sh", "start")
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "./svc.sh", "start")
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -185,11 +225,11 @@ func RemoveRunner(rootDir string, name string, token string) error {
 
 	// Try to uninstall and unconfigure, but don't fail hard if it fails (e.g. if partial install)
 	if err := UninstallRunnerSvc(runnerDir); err != nil {
-		fmt.Printf("Warning: failed to uninstall runner %s: %v\n", name, err)
+		slog.Error("Warning: failed to uninstall runner %s: %v\n", name, err)
 	}
 
 	if err := UnconfigureRunner(runnerDir, token); err != nil {
-		fmt.Printf("Warning: failed to unconfigure runner %s: %v\n", name, err)
+		slog.Error("Warning: failed to unconfigure runner %s: %v\n", name, err)
 	}
 
 	if err := os.RemoveAll(runnerDir); err != nil {
@@ -200,7 +240,10 @@ func RemoveRunner(rootDir string, name string, token string) error {
 
 func UnconfigureRunner(dir string, token string) error {
 	// ./config.sh remove --token <token>
-	cmd := exec.Command("./config.sh", "remove", "--token", token)
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeoutSeconds*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "./config.sh", "remove", "--token", token)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
