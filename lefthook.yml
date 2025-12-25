@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: govet
+      files: git ls-files -m
+      glob: "*.go"
+      run: go vet {files}
+
+    - run: go fmt
