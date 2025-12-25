@@ -1,9 +1,28 @@
+assert_lefthook_installed: true
+skip_lfs: true
+
 pre-commit:
   parallel: true
   jobs:
-    - name: govet
-      files: git ls-files -m
+    - name: lint & test
       glob: "*.go"
-      run: go vet {files}
+      group:
+        jobs:
+          - run: make lint
+            # tags: lint
+            stage_fixed: true
 
-    - run: go fmt
+          - run: make test
+            # tags: test
+
+    # - name: check links
+    #   tags: docs
+    #   run: lychee --max-concurrency 3 {staged_files}
+    #   glob: "*.md"
+    #   exclude:
+    #     - CHANGELOG.md
+
+    # - name: fix typos
+    #   tags: lint
+    #   run: typos --write-changes {staged_files}
+    #   stage_fixed: true
