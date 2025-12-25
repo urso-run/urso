@@ -1,15 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/repeat-dev/urso/internal"
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
 )
 
 type Config struct {
@@ -91,24 +98,39 @@ func SyncRunners(cfg Config, ms internal.MachineState, registerToken, removeToke
 }
 
 func main() {
-	totalArgs := 2
+	const totalArgs = 2
 	if len(os.Args) < totalArgs {
-		log.Fatal("expected 'init', 'run', or 'install' subcommands")
+		printUsage()
+		os.Exit(1)
 	}
 
 	switch os.Args[1] {
 	case "init":
 		initCmd := flag.NewFlagSet("init", flag.ExitOnError)
+		initCmd.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: urso init")
+			fmt.Fprintln(os.Stderr, "Creates a default config.yaml in ~/.urso/config.yaml")
+		}
 		if err := initCmd.Parse(os.Args[2:]); err != nil {
 			log.Fatalf("parse failed: %v", err)
 		}
 		if err := runInit(); err != nil {
 			log.Fatalf("init failed: %v", err)
 		}
-		log.Println("config.yaml created successfully.")
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
-		configPath := runCmd.String("config", "config.yaml", "path to the configuration file")
+		runCmd.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: urso run [options]")
+			fmt.Fprintln(os.Stderr, "Synchronizes runners based on the config file.")
+			fmt.Fprintln(os.Stderr, "\nOptions:")
+			runCmd.PrintDefaults()
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatalf("could not get user home directory: %v", err)
+		}
+		defaultConfigPath := filepath.Join(home, ".urso", "config.yaml")
+		configPath := runCmd.String("config", defaultConfigPath, "path to the configuration file")
 		registerToken := runCmd.String("github-register-token", "", "token to register github actions runner at the organization level")
 		removeToken := runCmd.String("github-remove-token", "", "token to remove github actions runner")
 		if err := runCmd.Parse(os.Args[2:]); err != nil {
@@ -120,6 +142,12 @@ func main() {
 		}
 	case "install":
 		installCmd := flag.NewFlagSet("install", flag.ExitOnError)
+		installCmd.Usage = func() {
+			fmt.Fprintln(os.Stderr, "Usage: urso install [options]")
+			fmt.Fprintln(os.Stderr, "Installs urso as a service (requires a paid license).")
+			fmt.Fprintln(os.Stderr, "\nOptions:")
+			installCmd.PrintDefaults()
+		}
 		registrationToken := installCmd.String("urso-registration-token", "", "urso registration token")
 		if err := installCmd.Parse(os.Args[2:]); err != nil {
 			log.Fatalf("parse failed: %v", err)
@@ -128,13 +156,52 @@ func main() {
 		if err := runInstall(*registrationToken); err != nil {
 			log.Fatalf("install failed: %v", err)
 		}
+	case "version":
+		fmt.Fprintf(os.Stdout, "urso version %s, commit %s\n", version, commit)
+	case "help":
+		printUsage()
 	default:
-		log.Fatal("expected 'init', 'run', or 'install' subcommands")
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
+		printUsage()
+		os.Exit(1)
 	}
 }
 
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Usage: urso <command> [arguments]
+
+Available commands:
+  init      Create a default config.yaml for runners
+  run       Run the sync to create/remove runners based on config.yaml
+  install   Install urso as a service (paid license only)
+  version   Print the version number
+  help      Show this help message
+`)
+}
+
 func runInit() error {
-	defaultConfig := `rootDir: ".urso"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("could not get user home directory: %w", err)
+	}
+	ursoDir := filepath.Join(home, ".urso")
+	configPath := filepath.Join(ursoDir, "config.yaml")
+
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Fprintf(os.Stderr, "Config file already exists at %s. Overwrite? (y/N) ", configPath)
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		if strings.TrimSpace(strings.ToLower(input)) != "y" {
+			log.Println("Aborted.")
+			return nil
+		}
+	}
+
+	if err := os.MkdirAll(ursoDir, 0750); err != nil {
+		return fmt.Errorf("could not create .urso directory: %w", err)
+	}
+
+	defaultConfig := `rootDir: ".urso/runners"
 runners:
   - name: "default-runner"
     labels:
@@ -143,7 +210,11 @@ runners:
       - x64
     # url: "https://github.com/my-org"
 `
-	return os.WriteFile("config.yaml", []byte(defaultConfig), 0600)
+	if err := os.WriteFile(configPath, []byte(defaultConfig), 0600); err != nil {
+		return fmt.Errorf("could not write config file: %w", err)
+	}
+	log.Printf("config.yaml created successfully at %s", configPath)
+	return nil
 }
 
 func runRun(configPath, registerToken, removeToken string) error {
@@ -174,10 +245,10 @@ func runRun(configPath, registerToken, removeToken string) error {
 }
 
 func runInstall(token string) error {
+	log.Println("The install command is a paid feature and is not yet implemented.")
+	log.Println("Thank you for your interest!")
 	if token == "" {
 		return errors.New("urso-registration-token is required for installation")
 	}
-	log.Println("The install command is a paid feature and is not yet implemented.")
-	log.Println("Thank you for your interest!")
 	return nil
 }
