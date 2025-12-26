@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
@@ -44,14 +45,22 @@ type MachineInspector interface {
 
 // LiveRunnerExecutor is the production implementation of RunnerExecutor that
 // actually executes shell commands.
-type LiveRunnerExecutor struct{}
+type LiveRunnerExecutor struct {
+	out io.Writer
+}
+
+// NewLiveRunnerExecutor creates a new LiveRunnerExecutor that writes command
+// output to the given writer.
+func NewLiveRunnerExecutor(out io.Writer) *LiveRunnerExecutor {
+	return &LiveRunnerExecutor{out: out}
+}
 
 func (l *LiveRunnerExecutor) Extract(archivePath, destDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -67,8 +76,8 @@ func (l *LiveRunnerExecutor) Configure(dir string, cfg RunnerConfig, token strin
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./config.sh", args...)
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -77,8 +86,8 @@ func (l *LiveRunnerExecutor) InstallService(dir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./svc.sh", "install")
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -87,8 +96,8 @@ func (l *LiveRunnerExecutor) StartService(dir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./svc.sh", "start")
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -97,8 +106,8 @@ func (l *LiveRunnerExecutor) UninstallService(dir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./svc.sh", "uninstall")
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -107,8 +116,8 @@ func (l *LiveRunnerExecutor) Unconfigure(dir string, token string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./config.sh", "remove", "--token", token)
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
 	return cmd.Run()
 }
 
@@ -178,11 +187,12 @@ type RunnerSyncer struct {
 	machine    MachineInspector
 	downloader ActionsDownloader
 	executor   RunnerExecutor
+	logger     *slog.Logger
 }
 
 // NewRunnerSyncer creates a new RunnerSyncer with the given dependencies.
-func NewRunnerSyncer(m MachineInspector, d ActionsDownloader, e RunnerExecutor) *RunnerSyncer {
-	return &RunnerSyncer{machine: m, downloader: d, executor: e}
+func NewRunnerSyncer(m MachineInspector, d ActionsDownloader, e RunnerExecutor, l *slog.Logger) *RunnerSyncer {
+	return &RunnerSyncer{machine: m, downloader: d, executor: e, logger: l}
 }
 
 // Sync contains the core logic for adding and removing runners.
@@ -228,14 +238,14 @@ func (s *RunnerSyncer) removeRunners(rootDir string, runnersToRemove map[string]
 	if len(runnersToRemove) == 0 {
 		return nil
 	}
-	log.Printf("runners to remove: %+v", runnersToRemove)
+	s.logger.Info("runners to remove", "runners", runnersToRemove)
 	if removeToken == "" {
 		return errors.New("error removing runners: github-remove-token not found")
 	}
 	for name := range runnersToRemove {
-		log.Printf("removing runner: %s", name)
+		s.logger.Info("removing runner", "runner", name)
 		if err := s.removeRunner(rootDir, name, removeToken); err != nil {
-			log.Printf("failed to remove runner %s: %v", name, err) // Log but continue
+			s.logger.Warn("failed to remove runner", "runner", name, "error", err)
 		}
 	}
 	return nil
@@ -245,7 +255,7 @@ func (s *RunnerSyncer) createRunners(cfg Config, runnersToCreate []RunnerConfig,
 	if len(runnersToCreate) == 0 {
 		return nil
 	}
-	log.Printf("runners to create: %+v", runnersToCreate)
+	s.logger.Info("runners to create", "runners", runnersToCreate)
 	if registerToken == "" {
 		return errors.New("error creating runners: github-register-token not found")
 	}
@@ -256,7 +266,7 @@ func (s *RunnerSyncer) createRunners(cfg Config, runnersToCreate []RunnerConfig,
 	}
 	defer func() {
 		if err := s.machine.RemoveAll(tempDir); err != nil {
-			log.Printf("warning: failed to remove temp dir %s: %v", tempDir, err)
+			s.logger.Warn("failed to clean up temp dir", "path", tempDir, "error", err)
 		}
 	}()
 
@@ -299,10 +309,10 @@ func (s *RunnerSyncer) removeRunner(rootDir string, name string, token string) e
 
 	// Try to uninstall and unconfigure, but don't fail hard if it fails
 	if err := s.executor.UninstallService(runnerDir); err != nil {
-		log.Printf("Warning: failed to uninstall runner service for %s: %v\n", name, err)
+		s.logger.Warn("failed to uninstall runner service", "runner", name, "error", err)
 	}
 	if err := s.executor.Unconfigure(runnerDir, token); err != nil {
-		log.Printf("Warning: failed to unconfigure runner %s: %v\n", name, err)
+		s.logger.Warn("failed to unconfigure runner", "runner", name, "error", err)
 	}
 	if err := s.machine.RemoveAll(runnerDir); err != nil {
 		return fmt.Errorf("remove runner dir: %w", err)

@@ -2,6 +2,7 @@ package urso
 
 import (
 	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -39,7 +40,8 @@ func TestCLI_Init(t *testing.T) {
 			pathResult:   "/test/config.yaml",
 		}
 
-		cli := NewCLI(in, out, store)
+		logger := slog.New(slog.DiscardHandler)
+		cli := NewCLI(in, out, store, logger)
 		err := cli.Init()
 
 		if err != nil {
@@ -66,7 +68,8 @@ func TestCLI_Init(t *testing.T) {
 			pathResult:   "/test/config.yaml",
 		}
 
-		cli := NewCLI(in, out, store)
+		logger := slog.New(slog.DiscardHandler)
+		cli := NewCLI(in, out, store, logger)
 		err := cli.Init()
 
 		if err != nil {
@@ -97,7 +100,8 @@ func TestCLI_Init(t *testing.T) {
 			pathResult:   "/test/config.yaml",
 		}
 
-		cli := NewCLI(in, out, store)
+		logger := slog.New(slog.DiscardHandler)
+		cli := NewCLI(in, out, store, logger)
 		err := cli.Init()
 
 		if err != nil {

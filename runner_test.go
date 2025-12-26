@@ -1,6 +1,7 @@
 package urso
 
 import (
+	"log/slog"
 	"testing"
 )
 
@@ -102,7 +103,8 @@ func newTestHarness() testHarness {
 	machine := &SpyMachineInspector{}
 	downloader := &SpyActionsDownloader{}
 	executor := &SpyRunnerExecutor{}
-	syncer := NewRunnerSyncer(machine, downloader, executor)
+	logger := slog.New(slog.DiscardHandler)
+	syncer := NewRunnerSyncer(machine, downloader, executor, logger)
 	return testHarness{machine, downloader, executor, syncer}
 }
 

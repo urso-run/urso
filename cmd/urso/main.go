@@ -4,7 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -18,6 +18,8 @@ var (
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
 	const minArgs = 2
 	if len(os.Args) < minArgs {
 		printUsage()
@@ -32,10 +34,12 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Creates a default config.yaml in ~/.urso/config.yaml")
 		}
 		if err := initCmd.Parse(os.Args[2:]); err != nil {
-			log.Fatalf("parse failed: %v", err)
+			logger.Error("failed to parse flags for init command", "error", err)
+			os.Exit(1)
 		}
-		if err := runInit(); err != nil {
-			log.Fatalf("init failed: %v", err)
+		if err := runInit(logger); err != nil {
+			logger.Error("init command failed", "error", err)
+			os.Exit(1)
 		}
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
@@ -47,18 +51,21 @@ func main() {
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
-			log.Fatalf("could not get user home directory: %v", err)
+			logger.Error("could not get user home directory", "error", err)
+			os.Exit(1)
 		}
 		defaultConfigPath := filepath.Join(home, ".urso", "config.yaml")
 		configPath := runCmd.String("config", defaultConfigPath, "path to the configuration file")
 		registerToken := runCmd.String("github-register-token", "", "token to register github actions runner at the organization level")
 		removeToken := runCmd.String("github-remove-token", "", "token to remove github actions runner")
 		if err := runCmd.Parse(os.Args[2:]); err != nil {
-			log.Fatalf("parse failed: %v", err)
+			logger.Error("failed to parse flags for run command", "error", err)
+			os.Exit(1)
 		}
 
-		if err := runRun(*configPath, *registerToken, *removeToken); err != nil {
-			log.Fatalf("run failed: %v", err)
+		if err := runRun(logger, *configPath, *registerToken, *removeToken); err != nil {
+			logger.Error("run command failed", "error", err)
+			os.Exit(1)
 		}
 	case "install":
 		installCmd := flag.NewFlagSet("install", flag.ExitOnError)
@@ -70,11 +77,13 @@ func main() {
 		}
 		registrationToken := installCmd.String("urso-registration-token", "", "urso registration token")
 		if err := installCmd.Parse(os.Args[2:]); err != nil {
-			log.Fatalf("parse failed: %v", err)
+			logger.Error("failed to parse flags for install command", "error", err)
+			os.Exit(1)
 		}
 
-		if err := runInstall(*registrationToken); err != nil {
-			log.Fatalf("install failed: %v", err)
+		if err := runInstall(logger, *registrationToken); err != nil {
+			logger.Error("install command failed", "error", err)
+			os.Exit(1)
 		}
 	case "version":
 		fmt.Fprintf(os.Stdout, "urso version %s, commit %s, built at %s\n", version, commit, date)
@@ -99,16 +108,16 @@ Available commands:
 `)
 }
 
-func runInit() error {
+func runInit(logger *slog.Logger) error {
 	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
 		return err
 	}
-	cli := urso.NewCLI(os.Stdin, os.Stdout, store)
+	cli := urso.NewCLI(os.Stdin, os.Stdout, store, logger)
 	return cli.Init()
 }
 
-func runRun(configPath, registerToken, removeToken string) error {
+func runRun(logger *slog.Logger, configPath, registerToken, removeToken string) error {
 	cfg, err := urso.NewConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("error loading config: %w", err)
@@ -116,9 +125,9 @@ func runRun(configPath, registerToken, removeToken string) error {
 
 	machine := &urso.FileSystemMachine{}
 	downloader := &urso.GithubAPIDownloader{}
-	executor := &urso.LiveRunnerExecutor{}
+	executor := urso.NewLiveRunnerExecutor(os.Stdout)
 
-	syncer := urso.NewRunnerSyncer(machine, downloader, executor)
+	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
 
 	rt := registerToken
 	if rt == "" {
@@ -135,9 +144,9 @@ func runRun(configPath, registerToken, removeToken string) error {
 	return nil
 }
 
-func runInstall(token string) error {
-	log.Println("The install command is a paid feature and is not yet implemented.")
-	log.Println("Thank you for your interest!")
+func runInstall(logger *slog.Logger, token string) error {
+	logger.Info("The install command is a paid feature and is not yet implemented.")
+	logger.Info("Thank you for your interest!")
 	if token == "" {
 		return errors.New("urso-registration-token is required for installation")
 	}
