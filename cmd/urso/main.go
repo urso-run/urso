@@ -1,105 +1,25 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/repeat-dev/urso/internal"
-	"gopkg.in/yaml.v3"
+	"github.com/repeat-dev/urso"
 )
 
 var (
 	version = "dev"
 	commit  = "none"
+	date    = "unknown"
 )
 
-type Config struct {
-	RootDir string                  `yaml:"rootDir"`
-	Runners []internal.RunnerConfig `yaml:"runners"`
-}
-
-func NewConfig(configPath string) (Config, error) {
-	f, err := os.ReadFile(configPath)
-	if err != nil {
-		return Config{}, err
-	}
-	var cfg Config
-	if err := yaml.Unmarshal(f, &cfg); err != nil {
-		return Config{}, err
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Config{}, err
-	}
-	cfg.RootDir = filepath.Join(home, cfg.RootDir)
-
-	return cfg, nil
-}
-
-func SyncRunners(cfg Config, ms internal.MachineState, registerToken, removeToken string) error {
-	if !ms.RootExists {
-		if err := os.MkdirAll(cfg.RootDir, 0755); err != nil {
-			return fmt.Errorf("error creating root dir: %v", cfg.RootDir)
-		}
-	}
-
-	create := []internal.RunnerConfig{}
-	remove := ms.Runners
-	for _, r := range cfg.Runners {
-		if _, ok := ms.Runners[r.Name]; !ok {
-			create = append(create, r)
-		}
-		delete(remove, r.Name)
-	}
-
-	log.Printf("runners to remove: %+v", remove)
-	if len(remove) > 0 && removeToken == "" {
-		return errors.New("error removing runners: github-remove-token not found")
-	}
-	for name := range remove {
-		log.Printf("removing runner: %s", name)
-		if err := internal.RemoveRunner(cfg.RootDir, name, removeToken); err != nil {
-			log.Printf("failed to remove runner %s: %v", name, err)
-		}
-	}
-
-	log.Printf("runners to create: %+v", create)
-	if len(create) == 0 {
-		return nil
-	}
-	if registerToken == "" {
-		return errors.New("error creating runners: github-register-token not found")
-	}
-	d, err := os.MkdirTemp(cfg.RootDir, "runner-archive")
-	if err != nil {
-		return fmt.Errorf("error creating archive dir: %w", err)
-	}
-	defer os.RemoveAll(d)
-
-	archive, err := internal.GetRunnerArchive(d)
-	if err != nil {
-		return fmt.Errorf("error getting runner archive: %w", err)
-	}
-
-	for _, runner := range create {
-		if err := internal.CreateRunner(cfg.RootDir, runner, archive, registerToken); err != nil {
-			return fmt.Errorf("CreateRunner: %w", err)
-		}
-	}
-
-	return nil
-}
-
 func main() {
-	const totalArgs = 2
-	if len(os.Args) < totalArgs {
+	const minArgs = 2
+	if len(os.Args) < minArgs {
 		printUsage()
 		os.Exit(1)
 	}
@@ -157,7 +77,7 @@ func main() {
 			log.Fatalf("install failed: %v", err)
 		}
 	case "version":
-		fmt.Fprintf(os.Stdout, "urso version %s, commit %s\n", version, commit)
+		fmt.Fprintf(os.Stdout, "urso version %s, commit %s, built at %s\n", version, commit, date)
 	case "help":
 		printUsage()
 	default:
@@ -180,50 +100,21 @@ Available commands:
 }
 
 func runInit() error {
-	home, err := os.UserHomeDir()
+	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
-		return fmt.Errorf("could not get user home directory: %w", err)
+		return err
 	}
-	ursoDir := filepath.Join(home, ".urso")
-	configPath := filepath.Join(ursoDir, "config.yaml")
-
-	if _, err := os.Stat(configPath); err == nil {
-		fmt.Fprintf(os.Stderr, "Config file already exists at %s. Overwrite? (y/N) ", configPath)
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		if strings.TrimSpace(strings.ToLower(input)) != "y" {
-			log.Println("Aborted.")
-			return nil
-		}
-	}
-
-	if err := os.MkdirAll(ursoDir, 0750); err != nil {
-		return fmt.Errorf("could not create .urso directory: %w", err)
-	}
-
-	defaultConfig := `rootDir: ".urso/runners"
-runners:
-  - name: "default-runner"
-    labels:
-      - self-hosted
-      - linux
-      - x64
-    # url: "https://github.com/my-org"
-`
-	if err := os.WriteFile(configPath, []byte(defaultConfig), 0600); err != nil {
-		return fmt.Errorf("could not write config file: %w", err)
-	}
-	log.Printf("config.yaml created successfully at %s", configPath)
-	return nil
+	cli := urso.NewCLI(os.Stdin, os.Stdout, store)
+	return cli.Init()
 }
 
 func runRun(configPath, registerToken, removeToken string) error {
-	cfg, err := NewConfig(configPath)
+	cfg, err := urso.NewConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
-	ms, err := internal.NewMachineState(cfg.RootDir)
+	ms, err := urso.NewMachineState(cfg.RootDir)
 	if err != nil {
 		return err
 	}
@@ -238,7 +129,7 @@ func runRun(configPath, registerToken, removeToken string) error {
 		rmt = os.Getenv("GITHUB_REMOVE_TOKEN")
 	}
 
-	if err := SyncRunners(cfg, ms, rt, rmt); err != nil {
+	if err := urso.SyncRunners(cfg, ms, rt, rmt); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil
