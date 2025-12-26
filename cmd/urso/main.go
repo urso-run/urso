@@ -129,16 +129,10 @@ func runRun(logger *slog.Logger, configPath, registerToken, removeToken string) 
 
 	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
 
-	rt := registerToken
-	if rt == "" {
-		rt = os.Getenv("GITHUB_REGISTER_TOKEN")
-	}
-	rmt := removeToken
-	if rmt == "" {
-		rmt = os.Getenv("GITHUB_REMOVE_TOKEN")
-	}
+	regToken := urso.ResolveToken(registerToken, urso.EnvVarRegisterToken)
+	remToken := urso.ResolveToken(removeToken, urso.EnvVarRemoveToken)
 
-	if err := syncer.Sync(cfg, rt, rmt); err != nil {
+	if err := syncer.Sync(cfg, regToken, remToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil

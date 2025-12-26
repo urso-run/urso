@@ -19,15 +19,15 @@ This file tracks the development tasks for the `urso` project.
 
 ### 1. High Priority: Improve Logging
 
-- [ ] Introduce `slog.Logger` as a dependency into the `RunnerSyncer` and `CLI` structs.
-- [ ] Replace all `log.Printf` calls with structured, leveled logging (e.g., `logger.Info`, `logger.Warn`, `logger.Error`).
-- [ ] Decouple the `LiveRunnerExecutor` from writing directly to `os.Stdout` by making the output `io.Writer` configurable.
+- [x] Introduce `slog.Logger` as a dependency into the `RunnerSyncer` and `CLI` structs.
+- [x] Replace all `log.Printf` calls with structured, leveled logging (e.g., `logger.Info`, `logger.Warn`, `logger.Error`).
+- [x] Decouple the `LiveRunnerExecutor` from writing directly to `os.Stdout` by making the output `io.Writer` configurable.
 
 ### 2. Medium Priority: Configuration and Token Management
 
-- [ ] Move the logic for resolving tokens (flag > env var) from `main.go` into the `urso` package.
-- [ ] Add support for `githubRegisterToken` and `githubRemoveToken` in the `config.yaml` file.
-- [ ] Establish a clear order of precedence for token resolution (e.g., flag > environment variable > config file).
+- [x] Move the logic for resolving tokens (flag > env var) from `main.go` into the `urso` package.
+- [x] Add support for `githubRegisterToken` and `githubRemoveToken` in the `config.yaml` file.
+- [x] Establish a clear order of precedence for token resolution (e.g., flag > environment variable > config file).
 
 ### 3. Low Priority: Complete the `install` Command
 
