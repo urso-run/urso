@@ -114,11 +114,11 @@ func runRun(configPath, registerToken, removeToken string) error {
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
-	ms, err := urso.NewMachineState(cfg.RootDir)
-	if err != nil {
-		return err
-	}
-	log.Printf("machine state: %+v", ms)
+	machine := &urso.FileSystemMachine{}
+	downloader := &urso.GithubAPIDownloader{}
+	executor := &urso.LiveRunnerExecutor{}
+
+	syncer := urso.NewRunnerSyncer(machine, downloader, executor)
 
 	rt := registerToken
 	if rt == "" {
@@ -129,7 +129,7 @@ func runRun(configPath, registerToken, removeToken string) error {
 		rmt = os.Getenv("GITHUB_REMOVE_TOKEN")
 	}
 
-	if err := urso.SyncRunners(cfg, ms, rt, rmt); err != nil {
+	if err := syncer.Sync(cfg, rt, rmt); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil

@@ -3,14 +3,10 @@ package urso
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -67,100 +63,17 @@ func NewConfig(configPath string) (Config, error) {
 	return cfg, nil
 }
 
-// SyncRunners is the core logic function that synchronizes the state of runners
-// on the machine with the desired state from the configuration.
-func SyncRunners(cfg Config, ms MachineState, registerToken, removeToken string) error {
-	if !ms.RootExists {
-		if err := os.MkdirAll(cfg.RootDir, 0755); err != nil {
-			return fmt.Errorf("error creating root dir: %v", cfg.RootDir)
-		}
-	}
-
-	create := []RunnerConfig{}
-	remove := ms.Runners
-	for _, r := range cfg.Runners {
-		if _, ok := ms.Runners[r.Name]; !ok {
-			create = append(create, r)
-		}
-		delete(remove, r.Name)
-	}
-
-	log.Printf("runners to remove: %+v", remove)
-	if len(remove) > 0 && removeToken == "" {
-		return errors.New("error removing runners: github-remove-token not found")
-	}
-	for name := range remove {
-		log.Printf("removing runner: %s", name)
-		if err := removeRunner(cfg.RootDir, name, removeToken); err != nil {
-			log.Printf("failed to remove runner %s: %v", name, err)
-		}
-	}
-
-	log.Printf("runners to create: %+v", create)
-	if len(create) == 0 {
-		return nil
-	}
-	if registerToken == "" {
-		return errors.New("error creating runners: github-register-token not found")
-	}
-	d, err := os.MkdirTemp(cfg.RootDir, "runner-archive")
-	if err != nil {
-		return fmt.Errorf("error creating archive dir: %w", err)
-	}
-	defer os.RemoveAll(d)
-
-	archive, err := getRunnerArchive(d)
-	if err != nil {
-		return fmt.Errorf("error getting runner archive: %w", err)
-	}
-
-	for _, runner := range create {
-		if err := createRunner(cfg.RootDir, runner, archive, registerToken); err != nil {
-			return fmt.Errorf("CreateRunner: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// NewMachineState discovers the current state of the machine, including OS,
-// architecture, and existing runners.
-func NewMachineState(rootDir string) (MachineState, error) {
-	s := MachineState{
-		OS:      runtime.GOOS,
-		Arch:    runtime.GOARCH,
-		Runners: map[string]struct{}{},
-	}
-	if !supported(s.OS, s.Arch) {
-		return s, fmt.Errorf("unsupported os/arch: %s/%s", s.OS, s.Arch)
-	}
-	if _, err := os.Stat(rootDir); os.IsNotExist(err) {
-		s.RootExists = false
-		return s, nil
-	}
-	s.RootExists = true
-
-	dirs, err := os.ReadDir(rootDir)
-	if err != nil {
-		return s, fmt.Errorf("error reading root dir: %v", rootDir)
-	}
-	for _, d := range dirs {
-		s.Runners[d.Name()] = struct{}{}
-	}
-
-	return s, nil
-}
+// private functions used by the live implementations in runner.go
+// TODO: in the future, these could be unexported methods on a struct that holds dependencies like the http client.
 
 func supported(os, arch string) bool {
 	switch strings.Join([]string{os, arch}, "/") {
-	case "darwin/arm64":
+	case "darwin/arm64", "linux/amd64", "linux/arm64":
 		return true
 	default:
 		return false
 	}
 }
-
-// --- Runner Actions ---
 
 type releaseResponse struct {
 	TagName string `json:"tag_name"`
@@ -256,112 +169,4 @@ func getRunnerArchive(dstDir string) (string, error) {
 	}
 
 	return archive, nil
-}
-
-func createRunner(rootDir string, cfg RunnerConfig, archive string, token string) error {
-	runnerDir := path.Join(rootDir, cfg.Name)
-	if err := os.MkdirAll(runnerDir, 0755); err != nil {
-		return fmt.Errorf("mkdir runner: %w", err)
-	}
-	if err := extractRunner(archive, runnerDir); err != nil {
-		return fmt.Errorf("extract runner: %w", err)
-	}
-	if err := configureRunner(runnerDir, cfg, token); err != nil {
-		return fmt.Errorf("configure runner: %w", err)
-	}
-	if err := installRunnerSvc(runnerDir); err != nil {
-		return fmt.Errorf("install runner: %w", err)
-	}
-	if err := startRunnerSvc(runnerDir); err != nil {
-		return fmt.Errorf("start runner: %w", err)
-	}
-	return nil
-}
-
-func extractRunner(archivePath, destDir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func configureRunner(dir string, cfg RunnerConfig, token string) error {
-	args := []string{
-		"--url", cfg.URL,
-		"--token", token,
-		"--name", cfg.Name,
-		"--unattended",
-		"--replace",
-	}
-
-	if cfg.Group != "" {
-		args = append(args, "--runnergroup", cfg.Group)
-	}
-	if len(cfg.Labels) > 0 {
-		args = append(args, "--labels", strings.Join(cfg.Labels, ","))
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "./config.sh", args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func installRunnerSvc(dir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "./svc.sh", "install")
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func startRunnerSvc(dir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "./svc.sh", "start")
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func removeRunner(rootDir string, name string, token string) error {
-	runnerDir := path.Join(rootDir, name)
-	if err := uninstallRunnerSvc(runnerDir); err != nil {
-		log.Printf("Warning: failed to uninstall runner %s: %v\n", name, err)
-	}
-	if err := unconfigureRunner(runnerDir, token); err != nil {
-		log.Printf("Warning: failed to unconfigure runner %s: %v\n", name, err)
-	}
-	if err := os.RemoveAll(runnerDir); err != nil {
-		return fmt.Errorf("remove runner dir: %w", err)
-	}
-	return nil
-}
-
-func uninstallRunnerSvc(dir string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "./svc.sh", "uninstall")
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func unconfigureRunner(dir string, token string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "./config.sh", "remove", "--token", token)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
