@@ -35,87 +35,79 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("creates config file if it does not exist", func(t *testing.T) {
 		in := &bytes.Buffer{}
 		out := &bytes.Buffer{}
+		errOut := &bytes.Buffer{}
 		store := &SpyConfigStore{
-			existsResult: false, // Tell the spy the file doesn't exist.
+			existsResult: false,
 			pathResult:   "/test/config.yaml",
 		}
-
 		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, store, logger)
-		err := cli.Init()
+		cli := NewCLI(in, out, errOut, store, nil, logger, "", "", "")
+
+		err := cli.Init([]string{})
 
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
-
 		if !store.writeWasCalled {
 			t.Error("expected Write() to be called, but it wasn't")
 		}
-
-		// Check that a success message was printed.
 		expectedOutput := "config.yaml created successfully"
-		if !strings.Contains(out.String(), expectedOutput) {
-			t.Errorf("expected output to contain %q, but got %q", expectedOutput, out.String())
+		if !strings.Contains(errOut.String(), expectedOutput) {
+			t.Errorf("expected output to contain %q, but got %q", expectedOutput, errOut.String())
 		}
 	})
 
 	t.Run("aborts if config file exists and user says no", func(t *testing.T) {
-		// We simulate the user typing "n" followed by a newline.
 		in := strings.NewReader("n\n")
 		out := &bytes.Buffer{}
+		errOut := &bytes.Buffer{}
 		store := &SpyConfigStore{
-			existsResult: true, // Tell the spy the file *does* exist.
+			existsResult: true,
 			pathResult:   "/test/config.yaml",
 		}
-
 		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, store, logger)
-		err := cli.Init()
+		cli := NewCLI(in, out, errOut, store, nil, logger, "", "", "")
+
+		err := cli.Init([]string{})
 
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
-
 		if store.writeWasCalled {
 			t.Error("expected Write() not to be called, but it was")
 		}
-
-		// Check that the confirmation prompt and abort message were printed.
 		expectedPrompt := "Overwrite? (y/N)"
-		if !strings.Contains(out.String(), expectedPrompt) {
-			t.Errorf("expected output to contain prompt %q, but got %q", expectedPrompt, out.String())
+		if !strings.Contains(errOut.String(), expectedPrompt) {
+			t.Errorf("expected output to contain prompt %q, but got %q", errOut.String(), expectedPrompt)
 		}
 		expectedAbort := "Aborted."
-		if !strings.Contains(out.String(), expectedAbort) {
-			t.Errorf("expected output to contain abort message %q, but got %q", expectedAbort, out.String())
+		if !strings.Contains(errOut.String(), expectedAbort) {
+			t.Errorf("expected output to contain abort message %q, but got %q", errOut.String(), expectedAbort)
 		}
 	})
 
 	t.Run("overwrites if config file exists and user says yes", func(t *testing.T) {
-		// We simulate the user typing "y".
 		in := strings.NewReader("y\n")
 		out := &bytes.Buffer{}
+		errOut := &bytes.Buffer{}
 		store := &SpyConfigStore{
-			existsResult: true, // Tell the spy the file *does* exist.
+			existsResult: true,
 			pathResult:   "/test/config.yaml",
 		}
-
 		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, store, logger)
-		err := cli.Init()
+		cli := NewCLI(in, out, errOut, store, nil, logger, "", "", "")
+
+		err := cli.Init([]string{})
 
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
-
 		if !store.writeWasCalled {
 			t.Error("expected Write() to be called, but it wasn't")
 		}
-
-		// Check that a success message was printed.
 		expectedOutput := "config.yaml created successfully"
-		if !strings.Contains(out.String(), expectedOutput) {
-			t.Errorf("expected output to contain %q, but got %q", expectedOutput, out.String())
+		if !strings.Contains(errOut.String(), expectedOutput) {
+			t.Errorf("expected output to contain %q, but got %q", expectedOutput, errOut.String())
 		}
 	})
 }
