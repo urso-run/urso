@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -16,6 +17,7 @@ type CLI struct {
 	errOut io.Writer
 	store  ConfigStore
 	syncer Syncer
+	sm     ServiceManager
 	logger *slog.Logger
 
 	version string
@@ -30,6 +32,7 @@ func NewCLI(
 	errOut io.Writer,
 	store ConfigStore,
 	syncer Syncer,
+	sm ServiceManager,
 	logger *slog.Logger,
 	version, commit, date string,
 ) *CLI {
@@ -39,6 +42,7 @@ func NewCLI(
 		errOut: errOut,
 		store:  store,
 		syncer: syncer,
+		sm:     sm,
 		logger: logger,
 
 		version: version,
@@ -98,12 +102,22 @@ func (c *CLI) Run(configPath, registerToken, removeToken string) error {
 
 // Install handles the logic for the 'install' command.
 func (c *CLI) Install(registrationToken string) error {
-	c.logger.Info("The install command is a paid feature and is not yet implemented.")
-	c.logger.Info("Thank you for your interest!")
+	c.logger.Info("starting urso service installation")
+
 	if registrationToken == "" {
 		return errors.New("urso-registration-token is required for installation")
 	}
-	return nil
+
+	if c.sm == nil {
+		return ErrUnsupportedOS
+	}
+
+	executablePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+
+	return c.sm.Install(executablePath)
 }
 
 // Version prints the application's version information.

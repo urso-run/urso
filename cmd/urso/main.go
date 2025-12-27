@@ -29,7 +29,14 @@ func main() {
 	downloader := &urso.GithubAPIDownloader{}
 	executor := urso.NewLiveRunnerExecutor(os.Stdout)
 	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
-	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, logger, version, commit, date)
+
+	sm, err := urso.NewServiceManager(logger)
+	if err != nil {
+		// This is not a fatal error; the app can run without service management.
+		logger.Warn("could not initialize service manager", "error", err)
+	}
+
+	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, sm, logger, version, commit, date)
 
 	// 2. Define all possible flags using a single flag set.
 	// Commands will simply use the flags they need.
