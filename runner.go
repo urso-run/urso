@@ -16,6 +16,11 @@ import (
 
 // --- Interfaces for Testability ---
 
+// Syncer defines the interface for the core synchronization logic.
+type Syncer interface {
+	Sync(cfg Config, registerToken, removeToken string) error
+}
+
 // RunnerExecutor defines the interface for executing commands related to a runner.
 // This allows us to spy on shell commands in our tests instead of actually running them.
 type RunnerExecutor interface {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/repeat-dev/urso"
 )
@@ -16,40 +18,76 @@ var (
 )
 
 func main() {
-	// 1. Create the top-level logger.
+	// 1. Create dependencies
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-
-	// 2. Create all the "real" dependencies for the application.
-	// These are the live implementations of our interfaces that interact
-	// with the filesystem, network, and shell.
 	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
-		logger.Error("failed to initialize configuration store", "error", err)
+		fmt.Fprintf(os.Stderr, "Error: failed to initialize configuration store: %v\n", err)
+		os.Exit(1)
+	}
+	machine := &urso.FileSystemMachine{}
+	downloader := &urso.GithubAPIDownloader{}
+	executor := urso.NewLiveRunnerExecutor(os.Stdout)
+	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
+	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, logger, version, commit, date)
+
+	// 2. Define all possible flags using a single flag set.
+	// Commands will simply use the flags they need.
+	fs := flag.NewFlagSet("urso", flag.ExitOnError)
+	fs.SetOutput(os.Stderr) // Send flag errors to stderr
+	configPath := fs.String("config", defaultConfigPath(), "path to the configuration file")
+	registerToken := fs.String("github-register-token", "", "token to register github actions runner")
+	removeToken := fs.String("github-remove-token", "", "token to remove github actions runner")
+	installToken := fs.String("urso-registration-token", "", "urso registration token")
+
+	// 3. Parse command and flags
+	const minArgs = 2
+	if len(os.Args) < minArgs {
+		cli.PrintUsage()
 		os.Exit(1)
 	}
 
-	machine := &urso.FileSystemMachine{}
-	downloader := &urso.GithubAPIDownloader{}
-	// Command output from the runner scripts will be written to standard out.
-	executor := urso.NewLiveRunnerExecutor(os.Stdout)
-	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
+	command := os.Args[1]
+	// Parse the flags from the arguments that come *after* the command
+	if err := fs.Parse(os.Args[2:]); err != nil {
+		// The flag set's ExitOnError will handle printing the error and exiting.
+		// We still return an error for robustness, though it's unlikely to be reached.
+		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
+		os.Exit(1)
+	}
 
-	// 3. Create the CLI application itself, injecting all the dependencies.
-	cli := urso.NewCLI(
-		os.Stdin,
-		os.Stdout,
-		os.Stderr,
-		store,
-		syncer,
-		logger,
-		version,
-		commit,
-		date,
-	)
+	// 4. Execute the command
+	switch command {
+	case "init":
+		err = cli.Init()
+	case "run":
+		regToken := urso.ResolveToken(*registerToken, urso.EnvVarRegisterToken)
+		remToken := urso.ResolveToken(*removeToken, urso.EnvVarRemoveToken)
+		err = cli.Run(*configPath, regToken, remToken)
+	case "install":
+		err = cli.Install(*installToken)
+	case "version":
+		cli.Version()
+	case "help":
+		cli.PrintUsage()
+	default:
+		cli.PrintUsage()
+		err = fmt.Errorf("unknown command: '%s'", command)
+	}
 
-	// 4. Execute the application logic.
-	if err := cli.Execute(os.Args); err != nil {
+	// 5. Handle any errors from command execution
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// defaultConfigPath returns the default path for the config file.
+func defaultConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// This is unlikely to fail, but if it does, we'll fall back.
+		return "config.yaml"
+	}
+	return filepath.Join(home, ".urso", "config.yaml")
 }
