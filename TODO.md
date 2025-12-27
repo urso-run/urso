@@ -45,5 +45,5 @@ This file tracks the development tasks for the `urso` project.
 
 ### 4. Code Cleanup and Minor Refinements
 
-- [ ] Inject a shared `http.Client` as a dependency for the `GithubAPIDownloader` to improve efficiency and testability.
+- [x] Inject a shared `http.Client` as a dependency for the `GithubAPIDownloader` to improve efficiency and testability.
 - [ ] Propagate a `context.Context` from the top-level commands down through the application logic to enable consistent timeout and cancellation handling.

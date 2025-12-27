@@ -1,6 +1,7 @@
 package urso
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,10 +14,10 @@ import (
 
 // APIClient defines the interface for communicating with the Urso Dashboard API.
 type APIClient interface {
-	RegisterMachine(jwt string) (machineID string, machineToken string, err error)
-	GetRunnerConfig(id, token string) (Config, error)
-	GetRegisterToken(id, token string) (string, error)
-	GetRemoveToken(id, token string) (string, error)
+	RegisterMachine(ctx context.Context, jwt string) (machineID string, machineToken string, err error)
+	GetRunnerConfig(ctx context.Context, id, token string) (Config, error)
+	GetRegisterToken(ctx context.Context, id, token string) (string, error)
+	GetRemoveToken(ctx context.Context, id, token string) (string, error)
 }
 
 // CredentialStore defines the interface for securely storing and retrieving
@@ -76,28 +77,28 @@ func NewFileSystemCredentialStore() (*FileSystemCredentialStore, error) {
 // --- Method Implementations ---
 
 // RegisterMachine is not yet implemented.
-func (c *DashboardAPIClient) RegisterMachine(jwt string) (string, string, error) {
+func (c *DashboardAPIClient) RegisterMachine(_ context.Context, jwt string) (string, string, error) {
 	// TODO: Implement the POST /api/machine call.
 	_ = jwt
 	return "", "", errors.New("RegisterMachine not implemented")
 }
 
 // GetRunnerConfig is not yet implemented.
-func (c *DashboardAPIClient) GetRunnerConfig(id, token string) (Config, error) {
+func (c *DashboardAPIClient) GetRunnerConfig(_ context.Context, id, token string) (Config, error) {
 	// TODO: Implement the GET /api/machine/:id call.
 	_, _ = id, token
 	return Config{}, errors.New("GetRunnerConfig not implemented")
 }
 
 // GetRegisterToken is not yet implemented.
-func (c *DashboardAPIClient) GetRegisterToken(id, token string) (string, error) {
+func (c *DashboardAPIClient) GetRegisterToken(_ context.Context, id, token string) (string, error) {
 	// TODO: Implement the GET /api/machine/:id/registration-token call.
 	_, _ = id, token
 	return "", errors.New("GetRegisterToken not implemented")
 }
 
 // GetRemoveToken is not yet implemented.
-func (c *DashboardAPIClient) GetRemoveToken(id, token string) (string, error) {
+func (c *DashboardAPIClient) GetRemoveToken(_ context.Context, id, token string) (string, error) {
 	// TODO: Implement the GET /api/machine/:id/remove-token call.
 	_, _ = id, token
 	return "", errors.New("GetRemoveToken not implemented")

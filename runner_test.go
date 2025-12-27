@@ -1,6 +1,7 @@
 package urso
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 )
@@ -38,7 +39,7 @@ type SpyActionsDownloader struct {
 	GetRunnerArchiveDstDir    string
 }
 
-func (s *SpyActionsDownloader) GetRunnerArchive(dstDir string) (string, error) {
+func (s *SpyActionsDownloader) GetRunnerArchive(_ context.Context, dstDir string) (string, error) {
 	s.GetRunnerArchiveWasCalled = true
 	s.GetRunnerArchiveDstDir = dstDir
 	return s.archivePathToReturn, s.errToReturn
@@ -59,31 +60,31 @@ type SpyRunnerExecutor struct {
 	RemoveTok                 string
 }
 
-func (s *SpyRunnerExecutor) Extract(_, _ string) error {
+func (s *SpyRunnerExecutor) Extract(_ context.Context, _, _ string) error {
 	s.ExtractWasCalled = true
 	return nil
 }
-func (s *SpyRunnerExecutor) Configure(dir string, cfg RunnerConfig, token string) error {
+func (s *SpyRunnerExecutor) Configure(_ context.Context, dir string, cfg RunnerConfig, token string) error {
 	s.ConfigureWasCalled = true
 	s.ConfigureDir = dir
 	s.ConfigureCfg = cfg
 	s.ConfigureTok = token
 	return nil
 }
-func (s *SpyRunnerExecutor) InstallService(_ string) error {
+func (s *SpyRunnerExecutor) InstallService(_ context.Context, _ string) error {
 	s.InstallServiceWasCalled = true
 	return nil
 }
-func (s *SpyRunnerExecutor) StartService(_ string) error {
+func (s *SpyRunnerExecutor) StartService(_ context.Context, _ string) error {
 	s.StartServiceWasCalled = true
 	return nil
 }
-func (s *SpyRunnerExecutor) UninstallService(dir string) error {
+func (s *SpyRunnerExecutor) UninstallService(_ context.Context, dir string) error {
 	s.UninstallServiceWasCalled = true
 	s.UninstallDir = dir
 	return nil
 }
-func (s *SpyRunnerExecutor) Unconfigure(dir string, token string) error {
+func (s *SpyRunnerExecutor) Unconfigure(_ context.Context, dir string, token string) error {
 	s.UnconfigureWasCalled = true
 	s.UnconfigureDir = dir
 	s.RemoveTok = token
@@ -266,7 +267,7 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 				removeToken = tc.removeToken
 			}
 
-			err := h.syncer.Sync(tc.config, registerToken, removeToken)
+			err := h.syncer.Sync(context.TODO(), tc.config, registerToken, removeToken)
 
 			if tc.assert != nil {
 				tc.assert(t, h, err)

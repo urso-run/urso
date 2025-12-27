@@ -2,6 +2,7 @@ package urso
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log/slog"
 	"os"
@@ -40,7 +41,7 @@ type SpySyncer struct {
 	syncRemoveToken   string
 }
 
-func (s *SpySyncer) Sync(cfg Config, registerToken, removeToken string) error {
+func (s *SpySyncer) Sync(_ context.Context, cfg Config, registerToken, removeToken string) error {
 	s.syncCalled = true
 	s.syncCfg = cfg
 	s.syncRegisterToken = registerToken
@@ -54,13 +55,13 @@ type SpyServiceManager struct {
 	installPath     string
 }
 
-func (s *SpyServiceManager) Install(executablePath string) error {
+func (s *SpyServiceManager) Install(_ context.Context, executablePath string) error {
 	s.installCalled = true
 	s.installPath = executablePath
 	return nil
 }
 
-func (s *SpyServiceManager) Uninstall() error {
+func (s *SpyServiceManager) Uninstall(_ context.Context) error {
 	s.uninstallCalled = true
 	return nil
 }
@@ -76,20 +77,20 @@ type SpyAPIClient struct {
 	machineToken string
 }
 
-func (s *SpyAPIClient) RegisterMachine(jwt string) (string, string, error) {
+func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt string) (string, string, error) {
 	s.registerMachineCalled = true
 	s.registerMachineJWT = jwt
 	return s.machineID, s.machineToken, nil
 }
-func (s *SpyAPIClient) GetRunnerConfig(_, _ string) (Config, error) {
+func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) (Config, error) {
 	s.getRunnerConfigCalled = true
 	return Config{Runners: []RunnerConfig{{Name: "api-runner"}}}, nil
 }
-func (s *SpyAPIClient) GetRegisterToken(_, _ string) (string, error) {
+func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
 	return "api-gh-reg-token", nil
 }
-func (s *SpyAPIClient) GetRemoveToken(_, _ string) (string, error) {
+func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _ string) (string, error) {
 	s.getRemoveTokenCalled = true
 	return "api-gh-rem-token", nil
 }
@@ -169,7 +170,7 @@ func TestCLI_Run(t *testing.T) {
 		if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
 			t.Fatalf("failed to write test config: %v", err)
 		}
-		err := cli.Run(configPath, "reg-token", "rem-token")
+		err := cli.Run(context.TODO(), configPath, "reg-token", "rem-token")
 		if err != nil {
 			t.Fatalf("Run() returned an unexpected error: %v", err)
 		}
@@ -193,7 +194,7 @@ func TestCLI_Install(t *testing.T) {
 		spySyncer := &SpySyncer{}
 		cli := NewCLI(in, out, errOut, nil, spySyncer, spySM, spyAPI, spyCreds, logger, "", "", "")
 
-		err := cli.Install("test-jwt")
+		err := cli.Install(context.TODO(), "test-jwt")
 		if err != nil {
 			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
@@ -214,7 +215,7 @@ func TestCLI_Install(t *testing.T) {
 	t.Run("returns an error if token is missing", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 		cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger, "", "", "")
-		err := cli.Install("")
+		err := cli.Install(context.TODO(), "")
 		if err == nil {
 			t.Error("expected an error when token is missing, but got nil")
 		}
@@ -226,7 +227,7 @@ func TestCLI_Install(t *testing.T) {
 		spyCreds := &SpyCredentialStore{}
 		spySyncer := &SpySyncer{}
 		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, spyAPI, spyCreds, logger, "", "", "") // nil ServiceManager
-		err := cli.Install("some-token")
+		err := cli.Install(context.TODO(), "some-token")
 		if !errors.Is(err, ErrUnsupportedOS) {
 			t.Errorf("got error %v, want %v", err, ErrUnsupportedOS)
 		}

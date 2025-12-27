@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"text/template"
-	"time"
 )
 
 const (
@@ -22,10 +21,10 @@ const (
 type ServiceManager interface {
 	// Install configures and enables the system service.
 	// `executablePath` should be the full path to the `urso` binary.
-	Install(executablePath string) error
+	Install(ctx context.Context, executablePath string) error
 
 	// Uninstall stops and removes the system service.
-	Uninstall() error
+	Uninstall(ctx context.Context) error
 }
 
 // ErrUnsupportedOS is returned when an operation is attempted on an unsupported operating system.
@@ -75,7 +74,7 @@ func newLaunchdManager(logger *slog.Logger) *LaunchdManager {
 }
 
 // Install creates a launchd plist file, loads it, and starts the service.
-func (l *LaunchdManager) Install(executablePath string) error {
+func (l *LaunchdManager) Install(ctx context.Context, executablePath string) error {
 	l.logger.Info("installing launchd user agent")
 
 	plistPath, err := l.getPlistPath()
@@ -90,13 +89,13 @@ func (l *LaunchdManager) Install(executablePath string) error {
 
 	l.logger.Info("loading and starting service", "service", ServiceName)
 	// Unload first in case it's already loaded, to ensure we're using the new definition.
-	if err := l.runLaunchctl("unload", plistPath); err != nil {
+	if err := l.runLaunchctl(ctx, "unload", plistPath); err != nil {
 		l.logger.Warn("failed to unload existing service (this might be expected if it's the first install)", "error", err)
 	}
-	if err := l.runLaunchctl("load", plistPath); err != nil {
+	if err := l.runLaunchctl(ctx, "load", plistPath); err != nil {
 		return fmt.Errorf("failed to load service: %w", err)
 	}
-	if err := l.runLaunchctl("start", ServiceName); err != nil {
+	if err := l.runLaunchctl(ctx, "start", ServiceName); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
@@ -105,7 +104,7 @@ func (l *LaunchdManager) Install(executablePath string) error {
 }
 
 // Uninstall stops, unloads, and removes the launchd plist file.
-func (l *LaunchdManager) Uninstall() error {
+func (l *LaunchdManager) Uninstall(ctx context.Context) error {
 	l.logger.Info("uninstalling launchd user agent")
 
 	plistPath, err := l.getPlistPath()
@@ -114,10 +113,10 @@ func (l *LaunchdManager) Uninstall() error {
 	}
 
 	l.logger.Info("stopping and unloading service", "service", ServiceName)
-	if err := l.runLaunchctl("stop", ServiceName); err != nil {
+	if err := l.runLaunchctl(ctx, "stop", ServiceName); err != nil {
 		l.logger.Warn("failed to stop service (this might be expected if it was not running)", "error", err)
 	}
-	if err := l.runLaunchctl("unload", plistPath); err != nil {
+	if err := l.runLaunchctl(ctx, "unload", plistPath); err != nil {
 		l.logger.Warn("failed to unload service (this might be expected if it was not loaded)", "error", err)
 	}
 
@@ -175,9 +174,7 @@ func (l *LaunchdManager) getPlistPath() (string, error) {
 }
 
 // runLaunchctl executes a launchctl command.
-func (l *LaunchdManager) runLaunchctl(args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeoutSeconds*time.Second)
-	defer cancel()
+func (l *LaunchdManager) runLaunchctl(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "launchctl", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {

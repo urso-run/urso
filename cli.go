@@ -2,6 +2,7 @@ package urso
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -93,21 +94,21 @@ runners:
 }
 
 // Run executes the main sync logic using the provided configuration and tokens.
-func (c *CLI) Run(configPath, registerToken, removeToken string) error {
+func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken string) error {
 	cfg, err := NewConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
 	// Note: Token resolution is handled in main.go before calling this method.
-	if err := c.syncer.Sync(cfg, registerToken, removeToken); err != nil {
+	if err := c.syncer.Sync(ctx, cfg, registerToken, removeToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil
 }
 
 // Install handles the logic for the 'install' command.
-func (c *CLI) Install(registrationToken string) error {
+func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	c.logger.Info("starting urso service installation")
 
 	if registrationToken == "" {
@@ -116,7 +117,7 @@ func (c *CLI) Install(registrationToken string) error {
 
 	// 1. Register machine with Urso API
 	c.logger.Info("registering machine with urso api")
-	machineID, machineToken, err := c.api.RegisterMachine(registrationToken)
+	machineID, machineToken, err := c.api.RegisterMachine(ctx, registrationToken)
 	if err != nil {
 		return fmt.Errorf("failed to register machine: %w", err)
 	}
@@ -130,25 +131,25 @@ func (c *CLI) Install(registrationToken string) error {
 
 	// 3. Fetch runner config from API
 	c.logger.Info("fetching runner config from urso api")
-	config, err := c.api.GetRunnerConfig(machineID, machineToken)
+	config, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
 	if err != nil {
 		return fmt.Errorf("failed to get runner config: %w", err)
 	}
 
 	// 4. Fetch GitHub tokens from API
 	c.logger.Info("fetching github tokens from urso api")
-	ghRegisterToken, err := c.api.GetRegisterToken(machineID, machineToken)
+	ghRegisterToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
 	if err != nil {
 		return fmt.Errorf("failed to get github register token: %w", err)
 	}
-	ghRemoveToken, err := c.api.GetRemoveToken(machineID, machineToken)
+	ghRemoveToken, err := c.api.GetRemoveToken(ctx, machineID, machineToken)
 	if err != nil {
 		return fmt.Errorf("failed to get github remove token: %w", err)
 	}
 
 	// 5. Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(config, ghRegisterToken, ghRemoveToken); err != nil {
+	if err := c.syncer.Sync(ctx, config, ghRegisterToken, ghRemoveToken); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
 	}
 
@@ -163,7 +164,7 @@ func (c *CLI) Install(registrationToken string) error {
 	}
 
 	c.logger.Info("installing system service")
-	return c.sm.Install(executablePath)
+	return c.sm.Install(ctx, executablePath)
 }
 
 // Version prints the application's version information.
