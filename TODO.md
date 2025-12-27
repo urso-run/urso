@@ -2,48 +2,41 @@
 
 This file tracks the development tasks for the `urso` project.
 
-## Completed Tasks
+## Completed Milestones
 
+### V1: Core CLI and TDD Foundation
 - [x] Implement basic CLI structure (`init`, `run`, `install`).
-- [x] Use the standard library `flag` package for command-line parsing.
-- [x] Add `version` and `help` commands to the CLI.
-- [x] Enhance the `init` command to use the `~/.urso` directory and add an overwrite confirmation prompt.
-- [x] Refactor the project to isolate core logic from the `main` package into a dedicated `urso` package.
-- [x] Decouple the `init` command's logic from the filesystem using interfaces (`ConfigStore`) to enable TDD.
-- [x] Decouple the `run` command's logic from the filesystem and `os.exec` using interfaces (`MachineInspector`, `RunnerExecutor`, etc.).
-- [x] Add comprehensive unit tests for the `init` command logic.
-- [x] Add comprehensive unit tests for the `run` command's `SyncRunners` logic.
-- [x] Fix all outstanding `golangci-lint` issues.
+- [x] Refactor core logic into a testable, decoupled `urso` package.
+- [x] Add comprehensive unit tests for `init` and `run` commands.
+- [x] Resolve all `golangci-lint` issues.
+
+### V2: Hardening and API Implementation
+- [x] Implement structured, leveled logging with `slog`.
+- [x] Securely handle token resolution (flags and env vars only).
+- [x] Propagate `context.Context` for timeouts and cancellation.
+- [x] Inject `http.Client` dependency.
+- [x] Implement macOS (`launchd`) service installation logic.
+- [x] Implement and unit-test the `APIClient` for all required endpoints.
+- [x] Implement and unit-test the `CredentialStore` for local storage.
+- [x] Refactor `install` command to perform the full API-driven workflow, including secure merging of local and remote configs.
+- [x] Add comprehensive unit tests for the `install` command's orchestration logic.
 
 ## Next Steps
 
-### 1. High Priority: Improve Logging
+The client-side logic for both local (`run`) and API-driven (`install`) workflows is complete and unit-tested. The primary remaining task is to implement the specific workflow for the installed service to use.
 
-- [x] Introduce `slog.Logger` as a dependency into the `RunnerSyncer` and `CLI` structs.
-- [x] Replace all `log.Printf` calls with structured, leveled logging (e.g., `logger.Info`, `logger.Warn`, `logger.Error`).
-- [x] Decouple the `LiveRunnerExecutor` from writing directly to `os.Stdout` by making the output `io.Writer` configurable.
+- [ ] **Finalize the Managed Service Workflow**
+  - [ ] Add a `--managed` flag to the `run` command.
+  - [ ] When `urso run --managed` is executed, the `CLI.Run` method should:
+    1. Ignore the `--config` flag and local `config.yaml` for runner definitions.
+    2. Load the machine ID and token from the `CredentialStore`.
+    3. Fetch the runner configuration and GitHub tokens from the API.
+    4. Load the local `config.yaml` **only to read the `rootDir`**.
+    5. Merge the trusted `rootDir` with the runners fetched from the API.
+    6. Execute the sync logic with the merged configuration and fetched tokens.
+  - [ ] Update the `launchd.plist` template in `service.go` to call `urso run --managed`.
+  - [ ] Add comprehensive unit tests for this new flag and logic in `TestCLI_Run`.
 
-### 2. Medium Priority: Configuration and Token Management
-
-- [x] Move the logic for resolving tokens (flag > env var) from `main.go` into the `urso` package.
-- [x] Add support for `githubRegisterToken` and `githubRemoveToken` in the `config.yaml` file.
-- [x] Establish a clear order of precedence for token resolution (e.g., flag > environment variable > config file).
-
-### 3. Low Priority: Complete the `install` Command
-
-- [ ] **Implement `install` Command (API-Driven Workflow):**
-  - [ ] Define an `APIClient` interface to abstract calls to the Urso Dashboard API.
-  - [ ] Define a `CredentialStore` interface to abstract secure local storage of the machine ID and token.
-  - [ ] Refactor the `CLI.Install` method to orchestrate the full installation flow:
-    1. Register the machine via the API using a JWT.
-    2. Save the returned machine ID and token using the `CredentialStore`.
-    3. Fetch the runner configuration from the API.
-    4. Fetch the GitHub tokens from the API.
-    5. Call the existing `syncer.Sync()` method with the fetched config and tokens.
-    6. Install the `launchd` service to run a managed sync command in the background.
-  - [ ] Write comprehensive unit tests for the `Install` method using spies for all dependencies.
-
-### 4. Code Cleanup and Minor Refinements
-
-- [x] Inject a shared `http.Client` as a dependency for the `GithubAPIDownloader` to improve efficiency and testability.
-- [x] Propagate a `context.Context` from the top-level commands down through the application logic to enable consistent timeout and cancellation handling.
+- [ ] **Live Integration Testing**
+  - [ ] Validate the `urso install` command against the live Urso API (once backend JWT `kid` issue is resolved).
+  - [ ] Validate the `urso run --managed` workflow after it is installed as a service.
