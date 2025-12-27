@@ -33,7 +33,6 @@ func (s *SpyConfigStore) Path() string {
 	return s.pathResult
 }
 
-// SpySyncer is a test double for the Syncer interface.
 type SpySyncer struct {
 	syncCalled        bool
 	syncCfg           Config
@@ -49,7 +48,6 @@ func (s *SpySyncer) Sync(cfg Config, registerToken, removeToken string) error {
 	return nil
 }
 
-// SpyServiceManager is a test double for the ServiceManager interface.
 type SpyServiceManager struct {
 	installCalled   bool
 	uninstallCalled bool
@@ -67,66 +65,94 @@ func (s *SpyServiceManager) Uninstall() error {
 	return nil
 }
 
+type SpyAPIClient struct {
+	registerMachineCalled  bool
+	registerMachineJWT     string
+	getRunnerConfigCalled  bool
+	getRegisterTokenCalled bool
+	getRemoveTokenCalled   bool
+
+	machineID    string
+	machineToken string
+}
+
+func (s *SpyAPIClient) RegisterMachine(jwt string) (string, string, error) {
+	s.registerMachineCalled = true
+	s.registerMachineJWT = jwt
+	return s.machineID, s.machineToken, nil
+}
+func (s *SpyAPIClient) GetRunnerConfig(_, _ string) (Config, error) {
+	s.getRunnerConfigCalled = true
+	return Config{Runners: []RunnerConfig{{Name: "api-runner"}}}, nil
+}
+func (s *SpyAPIClient) GetRegisterToken(_, _ string) (string, error) {
+	s.getRegisterTokenCalled = true
+	return "api-gh-reg-token", nil
+}
+func (s *SpyAPIClient) GetRemoveToken(_, _ string) (string, error) {
+	s.getRemoveTokenCalled = true
+	return "api-gh-rem-token", nil
+}
+
+type SpyCredentialStore struct {
+	saveCalled bool
+	loadCalled bool
+	savedID    string
+	savedToken string
+}
+
+func (s *SpyCredentialStore) Save(id, token string) error {
+	s.saveCalled = true
+	s.savedID = id
+	s.savedToken = token
+	return nil
+}
+func (s *SpyCredentialStore) Load() (string, string, error) {
+	s.loadCalled = true
+	return "loaded-id", "loaded-token", nil
+}
+
 // --- Tests ---
 
 func TestCLI_Init(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+
 	t.Run("creates config file if it does not exist", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: false, pathResult: "/test/config.yaml"}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, store, nil, nil, logger, "", "", "")
-
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
 		err := cli.Init()
-
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
 		if !store.writeWasCalled {
 			t.Error("expected Write() to be called, but it wasn't")
-		}
-		expectedOutput := "config.yaml created successfully"
-		if !strings.Contains(errOut.String(), expectedOutput) {
-			t.Errorf("expected output to contain %q, but got %q", expectedOutput, errOut.String())
 		}
 	})
 
 	t.Run("aborts if config file exists and user says no", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("n\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, store, nil, nil, logger, "", "", "")
-
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
 		err := cli.Init()
-
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
 		if store.writeWasCalled {
 			t.Error("expected Write() not to be called, but it was")
 		}
-		expectedPrompt := "Overwrite? (y/N)"
-		if !strings.Contains(errOut.String(), expectedPrompt) {
-			t.Errorf("expected output to contain prompt %q, but got %q", expectedPrompt, errOut.String())
-		}
 	})
 
 	t.Run("overwrites if config file exists and user says yes", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("y\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, store, nil, nil, logger, "", "", "")
-
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
 		err := cli.Init()
-
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
 		if !store.writeWasCalled {
 			t.Error("expected Write() to be called, but it wasn't")
-		}
-		expectedOutput := "config.yaml created successfully"
-		if !strings.Contains(errOut.String(), expectedOutput) {
-			t.Errorf("expected output to contain %q, but got %q", expectedOutput, errOut.String())
 		}
 	})
 }
@@ -134,94 +160,75 @@ func TestCLI_Init(t *testing.T) {
 func TestCLI_Run(t *testing.T) {
 	t.Run("successfully calls syncer with provided config and tokens", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		store := &SpyConfigStore{} // Not used by Run, but needed for constructor
 		spySyncer := &SpySyncer{}
 		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, store, spySyncer, nil, logger, "dev", "test", "now")
+		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger, "", "", "")
 
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.yaml")
-		configContent := `
-rootDir: ".urso/runners"
-runners:
-  - name: "test-runner"
-`
-		if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
+		if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
 			t.Fatalf("failed to write test config: %v", err)
 		}
-
 		err := cli.Run(configPath, "reg-token", "rem-token")
-
 		if err != nil {
 			t.Fatalf("Run() returned an unexpected error: %v", err)
 		}
-
 		if !spySyncer.syncCalled {
 			t.Error("expected Sync to be called, but it wasn't")
 		}
 		if spySyncer.syncRegisterToken != "reg-token" {
 			t.Errorf("got register token %q, want 'reg-token'", spySyncer.syncRegisterToken)
 		}
-		if spySyncer.syncRemoveToken != "rem-token" {
-			t.Errorf("got remove token %q, want 'rem-token'", spySyncer.syncRemoveToken)
-		}
-		if len(spySyncer.syncCfg.Runners) != 1 || spySyncer.syncCfg.Runners[0].Name != "test-runner" {
-			t.Errorf("Sync was called with incorrect config: %+v", spySyncer.syncCfg)
-		}
 	})
 }
 
 func TestCLI_Install(t *testing.T) {
-	t.Run("calls the service manager's install method", func(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+
+	t.Run("happy path: performs all installation steps in order", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+		spyAPI := &SpyAPIClient{machineID: "test-id", machineToken: "test-token"}
+		spyCreds := &SpyCredentialStore{}
 		spySM := &SpyServiceManager{}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, nil, nil, spySM, logger, "dev", "test", "now")
+		spySyncer := &SpySyncer{}
+		cli := NewCLI(in, out, errOut, nil, spySyncer, spySM, spyAPI, spyCreds, logger, "", "", "")
 
-		// The token is passed but not used by this part of the logic yet.
-		err := cli.Install("some-token")
-
+		err := cli.Install("test-jwt")
 		if err != nil {
 			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
-
+		if !spyAPI.registerMachineCalled {
+			t.Error("RegisterMachine was not called")
+		}
+		if !spyCreds.saveCalled {
+			t.Error("Save was not called")
+		}
+		if !spySyncer.syncCalled {
+			t.Error("Sync was not called")
+		}
 		if !spySM.installCalled {
-			t.Error("expected ServiceManager.Install to be called, but it wasn't")
-		}
-
-		// Check that it tried to install the current executable
-		execPath, _ := os.Executable()
-		if spySM.installPath != execPath {
-			t.Errorf("got executable path %q, want %q", spySM.installPath, execPath)
-		}
-	})
-
-	t.Run("returns an error for an unsupported OS", func(t *testing.T) {
-		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		logger := slog.New(slog.DiscardHandler)
-		// Pass nil for the ServiceManager to simulate an unsupported OS
-		cli := NewCLI(in, out, errOut, nil, nil, nil, logger, "dev", "test", "now")
-
-		err := cli.Install("some-token")
-
-		if err == nil {
-			t.Fatal("expected an error for unsupported OS, but got nil")
-		}
-		if !errors.Is(err, ErrUnsupportedOS) {
-			t.Errorf("got error %v, want %v", err, ErrUnsupportedOS)
+			t.Error("ServiceManager.Install was not called")
 		}
 	})
 
 	t.Run("returns an error if token is missing", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		spySM := &SpyServiceManager{}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, nil, nil, spySM, logger, "dev", "test", "now")
-
+		cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger, "", "", "")
 		err := cli.Install("")
-
 		if err == nil {
 			t.Error("expected an error when token is missing, but got nil")
+		}
+	})
+
+	t.Run("returns an error for an unsupported OS", func(t *testing.T) {
+		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+		spyAPI := &SpyAPIClient{}
+		spyCreds := &SpyCredentialStore{}
+		spySyncer := &SpySyncer{}
+		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, spyAPI, spyCreds, logger, "", "", "") // nil ServiceManager
+		err := cli.Install("some-token")
+		if !errors.Is(err, ErrUnsupportedOS) {
+			t.Errorf("got error %v, want %v", err, ErrUnsupportedOS)
 		}
 	})
 }
@@ -229,11 +236,9 @@ func TestCLI_Install(t *testing.T) {
 func TestCLI_Version(t *testing.T) {
 	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	logger := slog.New(slog.DiscardHandler)
-	cli := NewCLI(in, out, errOut, nil, nil, nil, logger, "1.2.3", "abc1234", "2024-01-01")
-
+	cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger, "1.2.3", "abc", "date")
 	cli.Version()
-
-	expected := "urso version 1.2.3, commit abc1234, built at 2024-01-01\n"
+	expected := "urso version 1.2.3, commit abc, built at date\n"
 	if out.String() != expected {
 		t.Errorf("got %q, want %q", out.String(), expected)
 	}

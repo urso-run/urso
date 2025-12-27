@@ -18,6 +18,8 @@ type CLI struct {
 	store  ConfigStore
 	syncer Syncer
 	sm     ServiceManager
+	api    APIClient
+	creds  CredentialStore
 	logger *slog.Logger
 
 	version string
@@ -33,6 +35,8 @@ func NewCLI(
 	store ConfigStore,
 	syncer Syncer,
 	sm ServiceManager,
+	api APIClient,
+	creds CredentialStore,
 	logger *slog.Logger,
 	version, commit, date string,
 ) *CLI {
@@ -43,6 +47,8 @@ func NewCLI(
 		store:  store,
 		syncer: syncer,
 		sm:     sm,
+		api:    api,
+		creds:  creds,
 		logger: logger,
 
 		version: version,
@@ -108,6 +114,45 @@ func (c *CLI) Install(registrationToken string) error {
 		return errors.New("urso-registration-token is required for installation")
 	}
 
+	// 1. Register machine with Urso API
+	c.logger.Info("registering machine with urso api")
+	machineID, machineToken, err := c.api.RegisterMachine(registrationToken)
+	if err != nil {
+		return fmt.Errorf("failed to register machine: %w", err)
+	}
+	c.logger.Info("machine registered successfully", "machine_id", machineID)
+
+	// 2. Save credentials
+	c.logger.Info("saving machine credentials")
+	if err := c.creds.Save(machineID, machineToken); err != nil {
+		return fmt.Errorf("failed to save credentials: %w", err)
+	}
+
+	// 3. Fetch runner config from API
+	c.logger.Info("fetching runner config from urso api")
+	config, err := c.api.GetRunnerConfig(machineID, machineToken)
+	if err != nil {
+		return fmt.Errorf("failed to get runner config: %w", err)
+	}
+
+	// 4. Fetch GitHub tokens from API
+	c.logger.Info("fetching github tokens from urso api")
+	ghRegisterToken, err := c.api.GetRegisterToken(machineID, machineToken)
+	if err != nil {
+		return fmt.Errorf("failed to get github register token: %w", err)
+	}
+	ghRemoveToken, err := c.api.GetRemoveToken(machineID, machineToken)
+	if err != nil {
+		return fmt.Errorf("failed to get github remove token: %w", err)
+	}
+
+	// 5. Run the synchronization logic
+	c.logger.Info("performing initial runner synchronization")
+	if err := c.syncer.Sync(config, ghRegisterToken, ghRemoveToken); err != nil {
+		return fmt.Errorf("failed to sync runners: %w", err)
+	}
+
+	// 6. Install the service
 	if c.sm == nil {
 		return ErrUnsupportedOS
 	}
@@ -117,6 +162,7 @@ func (c *CLI) Install(registrationToken string) error {
 		return fmt.Errorf("could not determine executable path: %w", err)
 	}
 
+	c.logger.Info("installing system service")
 	return c.sm.Install(executablePath)
 }
 

@@ -31,10 +31,17 @@ This file tracks the development tasks for the `urso` project.
 
 ### 3. Low Priority: Complete the `install` Command
 
-- [ ] Implement the logic for installing `urso` as a system service.
-- [ ] Detect the host OS (`darwin`/`linux`) to generate the correct service file type.
-- [ ] Implement logic for `systemd` (Linux) and `launchd` (macOS).
-- [ ] Abstract the OS-specific logic behind a `ServiceManager` interface to keep the implementation testable.
+- [ ] **Implement `install` Command (API-Driven Workflow):**
+  - [ ] Define an `APIClient` interface to abstract calls to the Urso Dashboard API.
+  - [ ] Define a `CredentialStore` interface to abstract secure local storage of the machine ID and token.
+  - [ ] Refactor the `CLI.Install` method to orchestrate the full installation flow:
+    1. Register the machine via the API using a JWT.
+    2. Save the returned machine ID and token using the `CredentialStore`.
+    3. Fetch the runner configuration from the API.
+    4. Fetch the GitHub tokens from the API.
+    5. Call the existing `syncer.Sync()` method with the fetched config and tokens.
+    6. Install the `launchd` service to run a managed sync command in the background.
+  - [ ] Write comprehensive unit tests for the `Install` method using spies for all dependencies.
 
 ### 4. Code Cleanup and Minor Refinements
 
