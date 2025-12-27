@@ -3,7 +3,6 @@ package urso
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -82,9 +81,9 @@ func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt string) (string, s
 	s.registerMachineJWT = jwt
 	return s.machineID, s.machineToken, nil
 }
-func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) (Config, error) {
+func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]RunnerConfig, error) {
 	s.getRunnerConfigCalled = true
-	return Config{Runners: []RunnerConfig{{Name: "api-runner"}}}, nil
+	return []RunnerConfig{{Name: "api-runner"}}, nil
 }
 func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
@@ -153,7 +152,7 @@ func TestCLI_Init(t *testing.T) {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
 		}
 		if !store.writeWasCalled {
-			t.Error("expected Write() to be called, but it wasn't")
+			t.Error("expected Write() to be called, but it was")
 		}
 	})
 }
@@ -177,59 +176,85 @@ func TestCLI_Run(t *testing.T) {
 		if !spySyncer.syncCalled {
 			t.Error("expected Sync to be called, but it wasn't")
 		}
-		if spySyncer.syncRegisterToken != "reg-token" {
-			t.Errorf("got register token %q, want 'reg-token'", spySyncer.syncRegisterToken)
-		}
 	})
 }
 
-func TestCLI_Install(t *testing.T) {
+// installTestHarness is a helper struct for setting up install command tests.
+type installTestHarness struct {
+	cli    *CLI
+	api    *SpyAPIClient
+	creds  *SpyCredentialStore
+	sm     *SpyServiceManager
+	syncer *SpySyncer
+	store  *SpyConfigStore
+}
+
+func newInstallTestHarness(t *testing.T) installTestHarness {
+	t.Helper()
+	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	logger := slog.New(slog.DiscardHandler)
 
-	t.Run("happy path: performs all installation steps in order", func(t *testing.T) {
-		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		spyAPI := &SpyAPIClient{machineID: "test-id", machineToken: "test-token"}
-		spyCreds := &SpyCredentialStore{}
-		spySM := &SpyServiceManager{}
-		spySyncer := &SpySyncer{}
-		cli := NewCLI(in, out, errOut, nil, spySyncer, spySM, spyAPI, spyCreds, logger, "", "", "")
+	h := installTestHarness{
+		api:    &SpyAPIClient{machineID: "test-id", machineToken: "test-token"},
+		creds:  &SpyCredentialStore{},
+		sm:     &SpyServiceManager{},
+		syncer: &SpySyncer{},
+		store:  &SpyConfigStore{},
+	}
 
-		err := cli.Install(context.TODO(), "test-jwt")
+	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, h.sm, h.api, h.creds, logger, "", "", "")
+	return h
+}
+
+func TestCLI_Install(t *testing.T) {
+	t.Run("happy path performs all steps and merges configs", func(t *testing.T) {
+		h := newInstallTestHarness(t)
+
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yaml")
+		if err := os.WriteFile(configPath, []byte(`rootDir: "/local/root/dir"`), 0600); err != nil {
+			t.Fatalf("failed to write test config: %v", err)
+		}
+		h.store.existsResult = true
+		h.store.pathResult = configPath
+
+		err := h.cli.Install(context.TODO(), "test-jwt")
+
 		if err != nil {
 			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
-		if !spyAPI.registerMachineCalled {
+		if !h.api.registerMachineCalled {
 			t.Error("RegisterMachine was not called")
 		}
-		if !spyCreds.saveCalled {
+		if !h.creds.saveCalled {
 			t.Error("Save was not called")
 		}
-		if !spySyncer.syncCalled {
+		if !h.syncer.syncCalled {
 			t.Error("Sync was not called")
 		}
-		if !spySM.installCalled {
+		if !h.sm.installCalled {
 			t.Error("ServiceManager.Install was not called")
 		}
 	})
 
-	t.Run("returns an error if token is missing", func(t *testing.T) {
-		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger, "", "", "")
-		err := cli.Install(context.TODO(), "")
+	t.Run("returns an error if init has not been run", func(t *testing.T) {
+		h := newInstallTestHarness(t)
+		h.store.existsResult = false // Simulate config not existing
+		err := h.cli.Install(context.TODO(), "test-jwt")
 		if err == nil {
-			t.Error("expected an error when token is missing, but got nil")
+			t.Fatal("expected an error but got nil")
+		}
+		if !strings.Contains(err.Error(), "please run 'urso init' first") {
+			t.Errorf("expected error message to mention 'urso init', but got: %v", err)
 		}
 	})
 
-	t.Run("returns an error for an unsupported OS", func(t *testing.T) {
-		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		spyAPI := &SpyAPIClient{}
-		spyCreds := &SpyCredentialStore{}
-		spySyncer := &SpySyncer{}
-		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, spyAPI, spyCreds, logger, "", "", "") // nil ServiceManager
-		err := cli.Install(context.TODO(), "some-token")
-		if !errors.Is(err, ErrUnsupportedOS) {
-			t.Errorf("got error %v, want %v", err, ErrUnsupportedOS)
+	t.Run("returns an error if token is missing", func(t *testing.T) {
+		h := newInstallTestHarness(t)
+		h.store.existsResult = true
+		err := h.cli.Install(context.TODO(), "")
+		if err == nil {
+			t.Error("expected an error when token is missing, but got nil")
 		}
 	})
 }

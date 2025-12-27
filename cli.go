@@ -111,6 +111,10 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	c.logger.Info("starting urso service installation")
 
+	if !c.store.Exists() {
+		return fmt.Errorf("config file not found at %s, please run 'urso init' first", c.store.Path())
+	}
+
 	if registrationToken == "" {
 		return errors.New("urso-registration-token is required for installation")
 	}
@@ -129,14 +133,26 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return fmt.Errorf("failed to save credentials: %w", err)
 	}
 
-	// 3. Fetch runner config from API
+	// 3. Load local config to get rootDir
+	localConfig, err := NewConfig(c.store.Path())
+	if err != nil {
+		return fmt.Errorf("failed to load local config: %w", err)
+	}
+
+	// 4. Fetch the runner config from the API
 	c.logger.Info("fetching runner config from urso api")
-	config, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
+	apiRunners, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
 	if err != nil {
 		return fmt.Errorf("failed to get runner config: %w", err)
 	}
 
-	// 4. Fetch GitHub tokens from API
+	// 5. Merge local rootDir with API runners
+	finalConfig := Config{
+		RootDir: localConfig.RootDir,
+		Runners: apiRunners,
+	}
+
+	// 6. Fetch GitHub tokens from API
 	c.logger.Info("fetching github tokens from urso api")
 	ghRegisterToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
 	if err != nil {
@@ -147,9 +163,9 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return fmt.Errorf("failed to get github remove token: %w", err)
 	}
 
-	// 5. Run the synchronization logic
+	// 7. Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, config, ghRegisterToken, ghRemoveToken); err != nil {
+	if err := c.syncer.Sync(ctx, finalConfig, ghRegisterToken, ghRemoveToken); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
 	}
 

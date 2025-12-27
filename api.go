@@ -16,7 +16,7 @@ import (
 // APIClient defines the interface for communicating with the Urso Dashboard API.
 type APIClient interface {
 	RegisterMachine(ctx context.Context, jwt string) (machineID string, machineToken string, err error)
-	GetRunnerConfig(ctx context.Context, id, token string) (Config, error)
+	GetRunnerConfig(ctx context.Context, id, token string) ([]RunnerConfig, error)
 	GetRegisterToken(ctx context.Context, id, token string) (string, error)
 	GetRemoveToken(ctx context.Context, id, token string) (string, error)
 }
@@ -71,6 +71,24 @@ type registerMachineResponse struct {
 	Token string `json:"token"`
 }
 
+type tokenResponse struct {
+	Token string `json:"token"`
+}
+
+// apiRunnerConfig is the representation of a runner from the API.
+type apiRunnerConfig struct {
+	Name   string   `json:"name"`
+	Group  string   `json:"group"`
+	URL    string   `json:"url"`
+	Labels []string `json:"labels"`
+}
+
+// apiConfigResponse is the response from the GET /api/machine/:id endpoint.
+type apiConfigResponse struct {
+	// The rootdir should absolutely not be considered from response. No upside, only downsides (configuration/security)
+	Runners []apiRunnerConfig `json:"runners"`
+}
+
 // --- Method Implementations ---
 
 // RegisterMachine sends a request to the Urso API to register a new machine.
@@ -110,25 +128,74 @@ func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt string) (s
 	return registerResp.ID, registerResp.Token, nil
 }
 
-// GetRunnerConfig is not yet implemented.
-func (c *DashboardAPIClient) GetRunnerConfig(_ context.Context, id, token string) (Config, error) {
-	// TODO: Implement the GET /api/machine/:id call.
-	_, _ = id, token
-	return Config{}, errors.New("GetRunnerConfig not implemented")
+// GetRunnerConfig fetches the runner configuration from the Urso API.
+func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, id, token string) ([]RunnerConfig, error) {
+	url := fmt.Sprintf("%s/api/machine/%s", c.BaseURL, id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create get config request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to perform get config request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code from get config: %d", resp.StatusCode)
+	}
+
+	var apiResp apiConfigResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to decode get config response: %w", err)
+	}
+
+	// Map from the API representation to our internal RunnerConfig struct.
+	runners := make([]RunnerConfig, len(apiResp.Runners))
+	for i, r := range apiResp.Runners {
+		runners[i] = RunnerConfig(r)
+	}
+
+	return runners, nil
 }
 
-// GetRegisterToken is not yet implemented.
-func (c *DashboardAPIClient) GetRegisterToken(_ context.Context, id, token string) (string, error) {
-	// TODO: Implement the GET /api/machine/:id/registration-token call.
-	_, _ = id, token
-	return "", errors.New("GetRegisterToken not implemented")
+// GetRegisterToken fetches a GitHub registration token from the Urso API.
+func (c *DashboardAPIClient) GetRegisterToken(ctx context.Context, id, token string) (string, error) {
+	return c.getToken(ctx, id, token, "registration-token")
 }
 
-// GetRemoveToken is not yet implemented.
-func (c *DashboardAPIClient) GetRemoveToken(_ context.Context, id, token string) (string, error) {
-	// TODO: Implement the GET /api/machine/:id/remove-token call.
-	_, _ = id, token
-	return "", errors.New("GetRemoveToken not implemented")
+// GetRemoveToken fetches a GitHub removal token from the Urso API.
+func (c *DashboardAPIClient) GetRemoveToken(ctx context.Context, id, token string) (string, error) {
+	return c.getToken(ctx, id, token, "remove-token")
+}
+
+func (c *DashboardAPIClient) getToken(ctx context.Context, id, token, tokenType string) (string, error) {
+	url := fmt.Sprintf("%s/api/machine/%s/%s", c.BaseURL, id, tokenType)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create get %s request: %w", tokenType, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to perform get %s request: %w", tokenType, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code from get %s: %d", tokenType, resp.StatusCode)
+	}
+
+	var tokenResp tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return "", fmt.Errorf("failed to decode get %s response: %w", tokenType, err)
+	}
+	return tokenResp.Token, nil
 }
 
 type credentials struct {

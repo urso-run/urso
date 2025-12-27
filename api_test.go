@@ -112,3 +112,89 @@ func assertIDAndToken(t *testing.T, id, expectedID, token, expectedToken string)
 		t.Errorf("got token %q, want %q", token, expectedToken)
 	}
 }
+
+func TestDashboardAPIClient_GetRunnerConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/machine/test-id" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer test-token" {
+			t.Errorf("incorrect auth header: %s", authHeader)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(apiConfigResponse{
+			Runners: []apiRunnerConfig{{Name: "api-runner"}},
+		}); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.DiscardHandler)
+	client := &DashboardAPIClient{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		Logger:     logger,
+	}
+
+	config, err := client.GetRunnerConfig(context.Background(), "test-id", "test-token")
+
+	if err != nil {
+		t.Fatalf("GetRunnerConfig returned an error: %v", err)
+	}
+	if len(config) != 1 || config[0].Name != "api-runner" {
+		t.Errorf("unexpected config returned: %+v", config)
+	}
+}
+
+func TestDashboardAPIClient_GetTokens(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var tokenValue string
+		switch r.URL.Path {
+		case "/api/machine/test-id/registration-token":
+			tokenValue = "gh-reg-token"
+		case "/api/machine/test-id/remove-token":
+			tokenValue = "gh-rem-token"
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(tokenResponse{Token: tokenValue}); err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.DiscardHandler)
+	client := &DashboardAPIClient{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		Logger:     logger,
+	}
+
+	t.Run("gets register token", func(t *testing.T) {
+		token, err := client.GetRegisterToken(context.Background(), "test-id", "test-token")
+		if err != nil {
+			t.Fatalf("GetRegisterToken returned an error: %v", err)
+		}
+		if token != "gh-reg-token" {
+			t.Errorf("got token %q, want 'gh-reg-token'", token)
+		}
+	})
+
+	t.Run("gets remove token", func(t *testing.T) {
+		token, err := client.GetRemoveToken(context.Background(), "test-id", "test-token")
+		if err != nil {
+			t.Fatalf("GetRemoveToken returned an error: %v", err)
+		}
+		if token != "gh-rem-token" {
+			t.Errorf("got token %q, want 'gh-rem-token'", token)
+		}
+	})
+}
