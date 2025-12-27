@@ -1,6 +1,7 @@
 package urso
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -76,12 +77,15 @@ type registerMachineResponse struct {
 func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt string) (string, string, error) {
 	url := c.BaseURL + "/api/machine"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	body := bytes.NewBufferString("{}")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create machine registration request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Length", "2")
 
 	c.Logger.Info("registering machine with api", "url", url)
 	resp, err := c.HTTPClient.Do(req)

@@ -47,6 +47,7 @@ func run() error {
 		logger.Warn("could not initialize service manager", "error", err)
 	}
 	apiClient := &urso.DashboardAPIClient{
+		BaseURL:    "https://urso.run",
 		HTTPClient: httpClient,
 		Logger:     logger,
 	}
