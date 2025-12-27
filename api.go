@@ -65,22 +65,45 @@ func NewFileSystemCredentialStore() (*FileSystemCredentialStore, error) {
 
 // --- API Response Structs ---
 
-// type registerMachineResponse struct {
-// 	ID    string `json:"id"`
-// 	Token string `json:"token"`
-// }
-
-// type tokenResponse struct {
-// 	Token string `json:"token"`
-// }
+type registerMachineResponse struct {
+	ID    string `json:"id"`
+	Token string `json:"token"`
+}
 
 // --- Method Implementations ---
 
-// RegisterMachine is not yet implemented.
-func (c *DashboardAPIClient) RegisterMachine(_ context.Context, jwt string) (string, string, error) {
-	// TODO: Implement the POST /api/machine call.
-	_ = jwt
-	return "", "", errors.New("RegisterMachine not implemented")
+// RegisterMachine sends a request to the Urso API to register a new machine.
+func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt string) (string, string, error) {
+	url := c.BaseURL + "/api/machine"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create machine registration request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/json")
+
+	c.Logger.Info("registering machine with api", "url", url)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to perform machine registration request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", "", fmt.Errorf("unexpected status code from machine registration: %d", resp.StatusCode)
+	}
+
+	var registerResp registerMachineResponse
+	if err := json.NewDecoder(resp.Body).Decode(&registerResp); err != nil {
+		return "", "", fmt.Errorf("failed to decode machine registration response: %w", err)
+	}
+
+	if registerResp.ID == "" || registerResp.Token == "" {
+		return "", "", errors.New("invalid response from API: missing id or token")
+	}
+
+	return registerResp.ID, registerResp.Token, nil
 }
 
 // GetRunnerConfig is not yet implemented.
