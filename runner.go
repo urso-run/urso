@@ -286,15 +286,10 @@ func (s *RunnerSyncer) Sync(ctx context.Context, cfg Config, registerToken, remo
 
 	runnersToCreate, runnersToRemove := s.plan(cfg, ms)
 
-	if err := s.removeRunners(ctx, cfg.RootDir, runnersToRemove, removeToken); err != nil {
-		return err // This will only be the token error
-	}
+	errRemove := s.removeRunners(ctx, cfg.RootDir, runnersToRemove, removeToken)
+	errCreate := s.createRunners(ctx, cfg, runnersToCreate, registerToken)
 
-	if err := s.createRunners(ctx, cfg, runnersToCreate, registerToken); err != nil {
-		return err
-	}
-
-	return nil
+	return errors.Join(errRemove, errCreate)
 }
 
 // plan determines which runners need to be created and which need to be removed.
@@ -318,13 +313,15 @@ func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runner
 	if removeToken == "" {
 		return errors.New("error removing runners: github-remove-token not found")
 	}
+	var errs []error
 	for name := range runnersToRemove {
 		s.logger.Info("removing runner", "runner", name)
 		if err := s.removeRunner(ctx, rootDir, name, removeToken); err != nil {
-			s.logger.Warn("failed to remove runner", "runner", name, "error", err)
+			s.logger.Error("failed to remove runner", "runner", name, "error", err)
+			errs = append(errs, fmt.Errorf("failed to remove runner %s: %w", name, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToCreate []RunnerConfig, registerToken string) error {
@@ -351,13 +348,14 @@ func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToC
 		return fmt.Errorf("error getting runner archive: %w", err)
 	}
 
+	var errs []error
 	for _, runner := range runnersToCreate {
 		if err := s.createRunner(ctx, cfg.RootDir, runner, archivePath, registerToken); err != nil {
-			// Stop on the first error for creation
-			return fmt.Errorf("failed to create runner %s: %w", runner.Name, err)
+			s.logger.Error("failed to create runner", "runner", runner.Name, "error", err)
+			errs = append(errs, fmt.Errorf("failed to create runner %s: %w", runner.Name, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *RunnerSyncer) createRunner(ctx context.Context, rootDir string, cfg RunnerConfig, archive string, token string) error {

@@ -2,6 +2,7 @@ package urso
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -123,49 +124,12 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return fmt.Errorf("failed to save credentials: %w", err)
 	}
 
-	// 3. Load local config to get rootDir
-	localConfig, err := NewConfig(c.store.Path())
-	if err != nil {
-		return fmt.Errorf("failed to load local config: %w", err)
+	// 3. Perform initial sync (fetches remote config, updates local file, and runs syncer)
+	if err := c.performInitialSync(ctx, machineID, machineToken); err != nil {
+		return err
 	}
 
-	// 4. Fetch the runner config from the API
-	c.logger.Info("fetching runner config from urso api")
-	apiRunners, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
-	if err != nil {
-		return fmt.Errorf("failed to get runner config: %w", err)
-	}
-
-	// 5. Update local config with runners from API
-	c.logger.Info("updating local config with api runners")
-	if err := c.updateLocalConfig(apiRunners); err != nil {
-		return fmt.Errorf("failed to update local config: %w", err)
-	}
-
-	// 6. Merge local rootDir with API runners
-	finalConfig := Config{
-		RootDir: localConfig.RootDir,
-		Runners: apiRunners,
-	}
-
-	// 7. Fetch GitHub tokens from API
-	c.logger.Info("fetching github tokens from urso api")
-	ghRegisterToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
-	if err != nil {
-		return fmt.Errorf("failed to get github register token: %w", err)
-	}
-	ghRemoveToken, err := c.api.GetRemoveToken(ctx, machineID, machineToken)
-	if err != nil {
-		return fmt.Errorf("failed to get github remove token: %w", err)
-	}
-
-	// 8. Run the synchronization logic
-	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, finalConfig, ghRegisterToken, ghRemoveToken); err != nil {
-		return fmt.Errorf("failed to sync runners: %w", err)
-	}
-
-	// 9. Install the service
+	// 4. Install the service
 	if c.sm == nil {
 		return ErrUnsupportedOS
 	}
@@ -179,14 +143,69 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	return c.sm.Install(ctx, executablePath)
 }
 
+func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
+	data, err := c.store.Read()
+	if err != nil {
+		return fmt.Errorf("failed to read local config: %w", err)
+	}
+
+	localConfig, err := ParseConfig(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to parse local config: %w", err)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("could not get home directory: %w", err)
+	}
+	localConfig.ExpandPaths(home)
+
+	// Fetch the runner config from the API
+	c.logger.Info("fetching runner config from urso api")
+	apiRunners, err := c.api.GetRunnerConfig(ctx, id, token)
+	if err != nil {
+		return fmt.Errorf("failed to get runner config: %w", err)
+	}
+
+	// Update local config with runners from API
+	c.logger.Info("updating local config with api runners")
+	if err := c.updateLocalConfig(apiRunners); err != nil {
+		return fmt.Errorf("failed to update local config: %w", err)
+	}
+
+	// Fetch GitHub tokens from API
+	c.logger.Info("fetching github tokens from urso api")
+	ghRegisterToken, err := c.api.GetRegisterToken(ctx, id, token)
+	if err != nil {
+		return fmt.Errorf("failed to get github register token: %w", err)
+	}
+	ghRemoveToken, err := c.api.GetRemoveToken(ctx, id, token)
+	if err != nil {
+		return fmt.Errorf("failed to get github remove token: %w", err)
+	}
+
+	finalConfig := Config{
+		RootDir: localConfig.RootDir,
+		Runners: apiRunners,
+	}
+
+	// Run the synchronization logic
+	c.logger.Info("performing initial runner synchronization")
+	if err := c.syncer.Sync(ctx, finalConfig, ghRegisterToken, ghRemoveToken); err != nil {
+		return fmt.Errorf("failed to sync runners: %w", err)
+	}
+
+	return nil
+}
+
 func (c *CLI) updateLocalConfig(runners []RunnerConfig) error {
 	data, err := c.store.Read()
 	if err != nil {
 		return fmt.Errorf("could not read config file: %w", err)
 	}
 
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	cfg, err := ParseConfig(bytes.NewReader(data))
+	if err != nil {
 		return fmt.Errorf("could not unmarshal config: %w", err)
 	}
 
@@ -208,6 +227,7 @@ func (c *CLI) registerMachine(ctx context.Context, registrationToken string) (st
 	hostname, err := os.Hostname()
 	if err != nil {
 		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
+		hostname = "unknown"
 	}
 	c.logger.Info("registering machine with urso api", "hostname", hostname)
 	machineID, machineToken, err := c.api.RegisterMachine(ctx, registrationToken, hostname)

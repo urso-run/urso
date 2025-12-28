@@ -114,7 +114,7 @@ func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt, hostname 
 	req.Header.Set("Accept", "application/json")
 
 	c.Logger.Info("registering machine with api", "url", url)
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to perform machine registration request: %w", err)
 	}
@@ -146,7 +146,7 @@ func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, id, token stri
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to perform get config request: %w", err)
 	}
@@ -189,7 +189,7 @@ func (c *DashboardAPIClient) getToken(ctx context.Context, id, token, tokenType 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("failed to perform get %s request: %w", tokenType, err)
 	}
@@ -204,6 +204,56 @@ func (c *DashboardAPIClient) getToken(ctx context.Context, id, token, tokenType 
 		return "", fmt.Errorf("failed to decode get %s response: %w", tokenType, err)
 	}
 	return tokenResp.Token, nil
+}
+
+func (c *DashboardAPIClient) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	const maxRetries = 3
+
+	for i := range maxRetries {
+		// If this is a retry, reset the body if it exists
+		if i > 0 && req.GetBody != nil {
+			newBody, err := req.GetBody()
+			if err != nil {
+				return nil, fmt.Errorf("failed to reset request body: %w", err)
+			}
+			req.Body = newBody
+		}
+
+		resp, err = c.HTTPClient.Do(req)
+
+		// Success or client-side error (4xx) - don't retry
+		if err == nil && resp.StatusCode < 500 {
+			return resp, nil
+		}
+
+		// If this was the last attempt, return whatever we got
+		if i == maxRetries-1 {
+			return resp, err
+		}
+
+		// If we got a response (but it was a 5xx), close it before retrying
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		backoff := time.Second * time.Duration(1<<i)
+		c.Logger.Warn("api request failed, retrying",
+			"attempt", i+1,
+			"url", req.URL.String(),
+			"error", err,
+			"backoff", backoff,
+		)
+
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	return resp, err
 }
 
 type credentials struct {

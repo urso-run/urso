@@ -87,16 +87,16 @@ func (l *LaunchdManager) Install(ctx context.Context, executablePath string) err
 		return err
 	}
 
-	l.logger.Info("loading and starting service", "service", ServiceName)
-	// Unload first in case it's already loaded, to ensure we're using the new definition.
-	if err := l.runLaunchctl(ctx, "unload", plistPath); err != nil {
-		l.logger.Warn("failed to unload existing service (this might be expected if it's the first install)", "error", err)
+	l.logger.Info("bootstrapping and starting service", "service", ServiceName)
+	// Bootout first in case it's already bootstrapped, to ensure we're using the new definition.
+	uid := os.Getuid()
+	domain := fmt.Sprintf("gui/%d", uid)
+
+	if err := l.runLaunchctl(ctx, "bootout", domain, plistPath); err != nil {
+		l.logger.Warn("failed to bootout existing service (this might be expected if it's the first install)", "error", err)
 	}
-	if err := l.runLaunchctl(ctx, "load", plistPath); err != nil {
-		return fmt.Errorf("failed to load service: %w", err)
-	}
-	if err := l.runLaunchctl(ctx, "start", ServiceName); err != nil {
-		return fmt.Errorf("failed to start service: %w", err)
+	if err := l.runLaunchctl(ctx, "bootstrap", domain, plistPath); err != nil {
+		return fmt.Errorf("failed to bootstrap service: %w", err)
 	}
 
 	l.logger.Info("launchd service installed successfully")
@@ -112,12 +112,12 @@ func (l *LaunchdManager) Uninstall(ctx context.Context) error {
 		return err
 	}
 
-	l.logger.Info("stopping and unloading service", "service", ServiceName)
-	if err := l.runLaunchctl(ctx, "stop", ServiceName); err != nil {
-		l.logger.Warn("failed to stop service (this might be expected if it was not running)", "error", err)
-	}
-	if err := l.runLaunchctl(ctx, "unload", plistPath); err != nil {
-		l.logger.Warn("failed to unload service (this might be expected if it was not loaded)", "error", err)
+	l.logger.Info("stopping and booting out service", "service", ServiceName)
+	uid := os.Getuid()
+	domain := fmt.Sprintf("gui/%d", uid)
+
+	if err := l.runLaunchctl(ctx, "bootout", domain, plistPath); err != nil {
+		l.logger.Warn("failed to bootout service (this might be expected if it was not loaded)", "error", err)
 	}
 
 	l.logger.Info("removing launchd plist file", "path", plistPath)

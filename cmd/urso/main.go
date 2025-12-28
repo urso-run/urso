@@ -45,8 +45,13 @@ func newRootCmd() *cobra.Command {
 	// Persistent flags available to all subcommands
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", defaultConfigPath(), "path to the configuration file")
 
+	// Standard streams
+	out := os.Stdout
+	errOut := os.Stderr
+	in := os.Stdin
+
 	// Dependencies
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewTextHandler(errOut, nil))
 	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
 		// We handle this during execution if needed, but logging it here for now
@@ -62,12 +67,12 @@ func newRootCmd() *cobra.Command {
 	syncer := urso.NewRunnerSyncer(
 		&urso.FileSystemMachine{},
 		urso.NewGithubAPIDownloader(httpClient),
-		urso.NewLiveRunnerExecutor(os.Stdout),
+		urso.NewLiveRunnerExecutor(out),
 		logger,
 	)
 	sm, _ := urso.NewServiceManager(logger)
 
-	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, sm, apiClient, credStore, logger)
+	cli := urso.NewCLI(in, out, errOut, store, syncer, sm, apiClient, credStore, logger)
 
 	// Command: init
 	initCmd := &cobra.Command{

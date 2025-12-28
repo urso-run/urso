@@ -1,6 +1,7 @@
 package urso
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,12 +39,14 @@ type MachineState struct {
 
 // NewConfig reads and parses the configuration file from the given path.
 func NewConfig(configPath string) (Config, error) {
-	f, err := os.ReadFile(configPath)
+	f, err := os.Open(configPath)
 	if err != nil {
 		return Config{}, err
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(f, &cfg); err != nil {
+	defer f.Close()
+
+	cfg, err := ParseConfig(f)
+	if err != nil {
 		return Config{}, err
 	}
 
@@ -51,9 +54,25 @@ func NewConfig(configPath string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	cfg.RootDir = filepath.Join(home, cfg.RootDir)
+	cfg.ExpandPaths(home)
 
 	return cfg, nil
+}
+
+// ParseConfig decodes the YAML configuration from an io.Reader.
+func ParseConfig(r io.Reader) (Config, error) {
+	var cfg Config
+	if err := yaml.NewDecoder(r).Decode(&cfg); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+// ExpandPaths resolves relative paths in the configuration.
+func (c *Config) ExpandPaths(homeDir string) {
+	if !filepath.IsAbs(c.RootDir) {
+		c.RootDir = filepath.Join(homeDir, c.RootDir)
+	}
 }
 
 // private functions used by the live implementations in runner.go
