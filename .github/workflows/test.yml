@@ -8,10 +8,6 @@ on:
   release:
     types: [published]
 
-env:
-  TEST_FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-  TEST_FMP_API_URL: https://financialmodelingprep.com
-
 jobs:
   lint:
     name: Lint

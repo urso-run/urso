@@ -162,7 +162,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(go.tradeforge.dev/fmp)
+        - prefix(github.com/repeat-dev/urso)
       custom-order: true
   exclusions:
     generated: lax
