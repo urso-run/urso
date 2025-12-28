@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -86,23 +85,4 @@ func (c *Config) ExpandPaths(homeDir string) {
 	if !filepath.IsAbs(c.RootDir) {
 		c.RootDir = filepath.Join(homeDir, c.RootDir)
 	}
-}
-
-// private functions used by the live implementations in runner.go
-func supported(os, arch string) bool {
-	switch strings.Join([]string{os, arch}, "/") {
-	case "darwin/arm64", "linux/amd64", "linux/arm64":
-		return true
-	default:
-		return false
-	}
-}
-
-// releaseResponse is used for decoding the GitHub API response for runner releases.
-type releaseResponse struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
 }
