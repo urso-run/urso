@@ -14,6 +14,7 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 		name          string
 		handler       http.HandlerFunc
 		jwt           string
+		hostname      string
 		expectError   bool
 		expectedID    string
 		expectedToken string
@@ -28,18 +29,28 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 				if authHeader != "Bearer test-jwt" {
 					t.Errorf("incorrect auth header: %s", authHeader)
 				}
-				w.WriteHeader(http.StatusCreated)
+
+				var req registerMachineRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				if req.Hostname != "test-hostname" {
+					t.Errorf("expected hostname %q, got %q", "test-hostname", req.Hostname)
+				}
+
+				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(registerMachineResponse{ID: "test-id", Token: "test-token"}); err != nil {
 					t.Fatalf("failed to write response: %v", err)
 				}
 			},
 			jwt:           "test-jwt",
+			hostname:      "test-hostname",
 			expectError:   false,
 			expectedID:    "test-id",
 			expectedToken: "test-token",
 		},
 		{
-			name: "returns an error on non-201 status code",
+			name: "returns an error on non-200 status code",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 			},
@@ -49,7 +60,7 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 		{
 			name: "returns an error on invalid JSON response",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusCreated)
+				w.WriteHeader(http.StatusOK)
 				if _, err := w.Write([]byte(`{"id": "test-id", "token":`)); err != nil {
 					t.Fatalf("failed to write malformed response: %v", err)
 				}
@@ -60,7 +71,7 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 		{
 			name: "returns an error on response with missing fields",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusCreated)
+				w.WriteHeader(http.StatusOK)
 				if _, err := w.Write([]byte(`{"id": "test-id"}`)); err != nil {
 					t.Fatalf("failed to write incomplete response: %v", err)
 				}
@@ -82,7 +93,7 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 				Logger:     logger,
 			}
 
-			id, token, err := client.RegisterMachine(context.Background(), tc.jwt)
+			id, token, err := client.RegisterMachine(context.Background(), tc.jwt, tc.hostname)
 
 			assertError(t, tc.expectError, err)
 

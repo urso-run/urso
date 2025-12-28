@@ -10,6 +10,7 @@ import (
 // This allows for swapping out the real filesystem for a spy in tests.
 type ConfigStore interface {
 	Exists() bool
+	Read() ([]byte, error)
 	Write(content []byte) error
 	Path() string
 }
@@ -46,6 +47,11 @@ func (f *FileSystemConfigStore) Write(content []byte) error {
 		return fmt.Errorf("could not create config directory: %w", err)
 	}
 	return os.WriteFile(f.path, content, 0600)
+}
+
+// Read reads the configuration file from disk.
+func (f *FileSystemConfigStore) Read() ([]byte, error) {
+	return os.ReadFile(f.path)
 }
 
 // Path returns the full path to the configuration file.

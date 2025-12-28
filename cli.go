@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // CLI holds the logic for the urso application, decoupled from the OS via interfaces.
@@ -114,18 +116,15 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	if !c.store.Exists() {
 		return fmt.Errorf("config file not found at %s, please run 'urso init' first", c.store.Path())
 	}
-
 	if registrationToken == "" {
 		return errors.New("urso-registration-token is required for installation")
 	}
 
 	// 1. Register machine with Urso API
-	c.logger.Info("registering machine with urso api")
-	machineID, machineToken, err := c.api.RegisterMachine(ctx, registrationToken)
+	machineID, machineToken, err := c.registerMachine(ctx, registrationToken)
 	if err != nil {
-		return fmt.Errorf("failed to register machine: %w", err)
+		return err
 	}
-	c.logger.Info("machine registered successfully", "machine_id", machineID)
 
 	// 2. Save credentials
 	c.logger.Info("saving machine credentials")
@@ -146,13 +145,19 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return fmt.Errorf("failed to get runner config: %w", err)
 	}
 
-	// 5. Merge local rootDir with API runners
+	// 5. Update local config with runners from API
+	c.logger.Info("updating local config with api runners")
+	if err := c.updateLocalConfig(apiRunners); err != nil {
+		return fmt.Errorf("failed to update local config: %w", err)
+	}
+
+	// 6. Merge local rootDir with API runners
 	finalConfig := Config{
 		RootDir: localConfig.RootDir,
 		Runners: apiRunners,
 	}
 
-	// 6. Fetch GitHub tokens from API
+	// 7. Fetch GitHub tokens from API
 	c.logger.Info("fetching github tokens from urso api")
 	ghRegisterToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
 	if err != nil {
@@ -163,13 +168,13 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return fmt.Errorf("failed to get github remove token: %w", err)
 	}
 
-	// 7. Run the synchronization logic
+	// 8. Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
 	if err := c.syncer.Sync(ctx, finalConfig, ghRegisterToken, ghRemoveToken); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
 	}
 
-	// 6. Install the service
+	// 9. Install the service
 	if c.sm == nil {
 		return ErrUnsupportedOS
 	}
@@ -205,4 +210,43 @@ Parameters:
   --urso-registration-token   urso registration token (obtained with a license)
 
 `)
+}
+
+func (c *CLI) updateLocalConfig(runners []RunnerConfig) error {
+	data, err := c.store.Read()
+	if err != nil {
+		return fmt.Errorf("could not read config file: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("could not unmarshal config: %w", err)
+	}
+
+	cfg.Runners = runners
+
+	updated, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("could not marshal updated config: %w", err)
+	}
+
+	if err := c.store.Write(updated); err != nil {
+		return fmt.Errorf("could not write updated config: %w", err)
+	}
+
+	return nil
+}
+
+func (c *CLI) registerMachine(ctx context.Context, registrationToken string) (string, string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
+	}
+	c.logger.Info("registering machine with urso api", "hostname", hostname)
+	machineID, machineToken, err := c.api.RegisterMachine(ctx, registrationToken, hostname)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to register machine: %w", err)
+	}
+	c.logger.Info("machine registered successfully", "machine_id", machineID)
+	return machineID, machineToken, nil
 }

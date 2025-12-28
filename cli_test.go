@@ -14,6 +14,8 @@ import (
 
 type SpyConfigStore struct {
 	existsResult   bool
+	readResult     []byte
+	readError      error
 	pathResult     string
 	writeWasCalled bool
 	contentWritten []byte
@@ -21,6 +23,10 @@ type SpyConfigStore struct {
 
 func (s *SpyConfigStore) Exists() bool {
 	return s.existsResult
+}
+
+func (s *SpyConfigStore) Read() ([]byte, error) {
+	return s.readResult, s.readError
 }
 
 func (s *SpyConfigStore) Write(content []byte) error {
@@ -66,19 +72,21 @@ func (s *SpyServiceManager) Uninstall(_ context.Context) error {
 }
 
 type SpyAPIClient struct {
-	registerMachineCalled  bool
-	registerMachineJWT     string
-	getRunnerConfigCalled  bool
-	getRegisterTokenCalled bool
-	getRemoveTokenCalled   bool
+	registerMachineCalled   bool
+	registerMachineJWT      string
+	registerMachineHostname string
+	getRunnerConfigCalled   bool
+	getRegisterTokenCalled  bool
+	getRemoveTokenCalled    bool
 
 	machineID    string
 	machineToken string
 }
 
-func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt string) (string, string, error) {
+func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) (string, string, error) {
 	s.registerMachineCalled = true
 	s.registerMachineJWT = jwt
+	s.registerMachineHostname = hostname
 	return s.machineID, s.machineToken, nil
 }
 func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]RunnerConfig, error) {
@@ -209,32 +217,14 @@ func newInstallTestHarness(t *testing.T) installTestHarness {
 func TestCLI_Install(t *testing.T) {
 	t.Run("happy path performs all steps and merges configs", func(t *testing.T) {
 		h := newInstallTestHarness(t)
-
-		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "config.yaml")
-		if err := os.WriteFile(configPath, []byte(`rootDir: "/local/root/dir"`), 0600); err != nil {
-			t.Fatalf("failed to write test config: %v", err)
-		}
-		h.store.existsResult = true
-		h.store.pathResult = configPath
+		setupMockConfig(t, &h)
 
 		err := h.cli.Install(context.TODO(), "test-jwt")
 
 		if err != nil {
 			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
-		if !h.api.registerMachineCalled {
-			t.Error("RegisterMachine was not called")
-		}
-		if !h.creds.saveCalled {
-			t.Error("Save was not called")
-		}
-		if !h.syncer.syncCalled {
-			t.Error("Sync was not called")
-		}
-		if !h.sm.installCalled {
-			t.Error("ServiceManager.Install was not called")
-		}
+		assertInstallStepsExecuted(t, h)
 	})
 
 	t.Run("returns an error if init has not been run", func(t *testing.T) {
@@ -257,6 +247,44 @@ func TestCLI_Install(t *testing.T) {
 			t.Error("expected an error when token is missing, but got nil")
 		}
 	})
+}
+
+func setupMockConfig(t *testing.T, h *installTestHarness) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	configContent := []byte(`rootDir: "/local/root/dir"`)
+	if err := os.WriteFile(configPath, configContent, 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	h.store.existsResult = true
+	h.store.pathResult = configPath
+	h.store.readResult = configContent
+}
+
+func assertInstallStepsExecuted(t *testing.T, h installTestHarness) {
+	t.Helper()
+	if !h.api.registerMachineCalled {
+		t.Error("RegisterMachine was not called")
+	}
+	if h.api.registerMachineHostname == "" {
+		t.Error("RegisterMachine was called with empty hostname")
+	}
+	if !h.creds.saveCalled {
+		t.Error("Save was not called")
+	}
+	if !h.store.writeWasCalled {
+		t.Error("expected local config to be updated, but Write was not called")
+	}
+	if !strings.Contains(string(h.store.contentWritten), "api-runner") {
+		t.Errorf("expected local config to contain 'api-runner', but got: %s", string(h.store.contentWritten))
+	}
+	if !h.syncer.syncCalled {
+		t.Error("Sync was not called")
+	}
+	if !h.sm.installCalled {
+		t.Error("ServiceManager.Install was not called")
+	}
 }
 
 func TestCLI_Version(t *testing.T) {

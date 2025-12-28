@@ -15,7 +15,7 @@ import (
 
 // APIClient defines the interface for communicating with the Urso Dashboard API.
 type APIClient interface {
-	RegisterMachine(ctx context.Context, jwt string) (machineID string, machineToken string, err error)
+	RegisterMachine(ctx context.Context, jwt, hostname string) (machineID string, machineToken string, err error)
 	GetRunnerConfig(ctx context.Context, id, token string) ([]RunnerConfig, error)
 	GetRegisterToken(ctx context.Context, id, token string) (string, error)
 	GetRemoveToken(ctx context.Context, id, token string) (string, error)
@@ -66,6 +66,10 @@ func NewFileSystemCredentialStore() (*FileSystemCredentialStore, error) {
 
 // --- API Response Structs ---
 
+type registerMachineRequest struct {
+	Hostname string `json:"hostname"`
+}
+
 type registerMachineResponse struct {
 	ID    string `json:"id"`
 	Token string `json:"token"`
@@ -92,18 +96,22 @@ type apiConfigResponse struct {
 // --- Method Implementations ---
 
 // RegisterMachine sends a request to the Urso API to register a new machine.
-func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt string) (string, string, error) {
+func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt, hostname string) (string, string, error) {
 	url := c.BaseURL + "/api/machine"
 
-	body := bytes.NewBufferString("{}")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	reqData := registerMachineRequest{Hostname: hostname}
+	body, err := json.Marshal(reqData)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal registration request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create machine registration request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Length", "2")
 
 	c.Logger.Info("registering machine with api", "url", url)
 	resp, err := c.HTTPClient.Do(req)
@@ -112,7 +120,7 @@ func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt string) (s
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("unexpected status code from machine registration: %d", resp.StatusCode)
 	}
 
