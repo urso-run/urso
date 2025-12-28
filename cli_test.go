@@ -128,7 +128,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("creates config file if it does not exist", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: false, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -141,7 +141,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("aborts if config file exists and user says no", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("n\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -154,7 +154,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("overwrites if config file exists and user says yes", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("y\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger, "", "", "")
+		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -170,7 +170,7 @@ func TestCLI_Run(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 		spySyncer := &SpySyncer{}
 		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger, "", "", "")
+		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
 
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.yaml")
@@ -210,7 +210,7 @@ func newInstallTestHarness(t *testing.T) installTestHarness {
 		store:  &SpyConfigStore{},
 	}
 
-	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, h.sm, h.api, h.creds, logger, "", "", "")
+	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, h.sm, h.api, h.creds, logger)
 	return h
 }
 
@@ -284,16 +284,5 @@ func assertInstallStepsExecuted(t *testing.T, h installTestHarness) {
 	}
 	if !h.sm.installCalled {
 		t.Error("ServiceManager.Install was not called")
-	}
-}
-
-func TestCLI_Version(t *testing.T) {
-	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-	logger := slog.New(slog.DiscardHandler)
-	cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger, "1.2.3", "abc", "date")
-	cli.Version()
-	expected := "urso version 1.2.3, commit abc, built at date\n"
-	if out.String() != expected {
-		t.Errorf("got %q, want %q", out.String(), expected)
 	}
 }

@@ -24,10 +24,6 @@ type CLI struct {
 	api    APIClient
 	creds  CredentialStore
 	logger *slog.Logger
-
-	version string
-	commit  string
-	date    string
 }
 
 // NewCLI creates a new CLI with the given dependencies.
@@ -41,7 +37,6 @@ func NewCLI(
 	api APIClient,
 	creds CredentialStore,
 	logger *slog.Logger,
-	version, commit, date string,
 ) *CLI {
 	return &CLI{
 		in:     in,
@@ -53,10 +48,6 @@ func NewCLI(
 		api:    api,
 		creds:  creds,
 		logger: logger,
-
-		version: version,
-		commit:  commit,
-		date:    date,
 	}
 }
 
@@ -186,30 +177,6 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 
 	c.logger.Info("installing system service")
 	return c.sm.Install(ctx, executablePath)
-}
-
-// Version prints the application's version information.
-func (c *CLI) Version() {
-	fmt.Fprintf(c.out, "urso version %s, commit %s, built at %s\n", c.version, c.commit, c.date)
-}
-
-// PrintUsage prints the command-line usage information.
-func (c *CLI) PrintUsage() {
-	fmt.Fprintf(c.errOut, `Usage: urso <command> [--github-register-token <token> | --github-remove-token <token> | --urso-registration-token <token>]
-
-Available commands:
-  init      Create a default config.yaml for runners
-  run       Run the sync to create/remove runners based on config.yaml
-  install   Install urso as a service (paid license only)
-  version   Print the version number
-  help      Show this help message
-
-Parameters:
-  --github-register-token     github actions runner registration token
-  --github-remove-token       github actions runner remove token
-  --urso-registration-token   urso registration token (obtained with a license)
-
-`)
 }
 
 func (c *CLI) updateLocalConfig(runners []RunnerConfig) error {

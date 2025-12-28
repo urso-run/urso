@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/repeat-dev/urso"
+	"github.com/spf13/cobra"
 )
 
 // These variables are set at build time via ldflags.
@@ -20,91 +19,103 @@ var (
 	date    = "unknown"
 )
 
-// commandTimeout defines the maximum execution time for a command.
 const commandTimeout = 5 * time.Minute
 
 func main() {
-	if err := run(); err != nil {
+	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	// 1. Create dependencies
+func newRootCmd() *cobra.Command {
+	var (
+		configPath    string
+		registerToken string
+		removeToken   string
+		installToken  string
+	)
+
+	rootCmd := &cobra.Command{
+		Use:     "urso",
+		Short:   "Urso is a GitHub Actions runner manager",
+		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+	}
+
+	// Persistent flags available to all subcommands
+	rootCmd.PersistentFlags().StringVar(&configPath, "config", defaultConfigPath(), "path to the configuration file")
+
+	// Dependencies
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
-		return fmt.Errorf("failed to initialize configuration store: %w", err)
+		// We handle this during execution if needed, but logging it here for now
+		logger.Error("failed to initialize configuration store", "error", err)
 	}
-	machine := &urso.FileSystemMachine{}
 	httpClient := urso.NewHTTPClient()
-	downloader := urso.NewGithubAPIDownloader(httpClient)
-	executor := urso.NewLiveRunnerExecutor(os.Stdout)
-	syncer := urso.NewRunnerSyncer(machine, downloader, executor, logger)
-	sm, err := urso.NewServiceManager(logger)
-	if err != nil {
-		logger.Warn("could not initialize service manager", "error", err)
-	}
 	apiClient := &urso.DashboardAPIClient{
 		BaseURL:    "https://urso.run",
 		HTTPClient: httpClient,
 		Logger:     logger,
 	}
-	credStore, err := urso.NewFileSystemCredentialStore()
-	if err != nil {
-		return fmt.Errorf("failed to initialize credential store: %w", err)
-	}
-	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, sm, apiClient, credStore, logger, version, commit, date)
+	credStore, _ := urso.NewFileSystemCredentialStore()
+	syncer := urso.NewRunnerSyncer(
+		&urso.FileSystemMachine{},
+		urso.NewGithubAPIDownloader(httpClient),
+		urso.NewLiveRunnerExecutor(os.Stdout),
+		logger,
+	)
+	sm, _ := urso.NewServiceManager(logger)
 
-	// 2. Define flags
-	fs := flag.NewFlagSet("urso", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	configPath := fs.String("config", defaultConfigPath(), "path to the configuration file")
-	registerToken := fs.String("github-register-token", "", "token to register github actions runner")
-	removeToken := fs.String("github-remove-token", "", "token to remove github actions runner")
-	installToken := fs.String("urso-registration-token", "", "urso registration token")
+	cli := urso.NewCLI(os.Stdin, os.Stdout, os.Stderr, store, syncer, sm, apiClient, credStore, logger)
 
-	// 3. Parse command and flags
-	const minArgs = 2
-	if len(os.Args) < minArgs {
-		cli.PrintUsage()
-		return errors.New("a command is required")
-	}
-	command := os.Args[1]
-	if err := fs.Parse(os.Args[2:]); err != nil {
-		return fmt.Errorf("failed to parse flags: %w", err)
+	// Command: init
+	initCmd := &cobra.Command{
+		Use:   "init",
+		Short: "Create a default config.yaml for runners",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return cli.Init()
+		},
 	}
 
-	// 4. Execute command with a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
-	defer cancel()
+	// Command: run
+	runCmd := &cobra.Command{
+		Use:   "run",
+		Short: "Run the sync to create/remove runners based on config.yaml",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
+			defer cancel()
 
-	switch command {
-	case "init":
-		return cli.Init()
-	case "run":
-		regToken := urso.ResolveToken(*registerToken, urso.EnvVarRegisterToken)
-		remToken := urso.ResolveToken(*removeToken, urso.EnvVarRemoveToken)
-		return cli.Run(ctx, *configPath, regToken, remToken)
-	case "install":
-		return cli.Install(ctx, *installToken)
-	case "version":
-		cli.Version()
-	case "help":
-		cli.PrintUsage()
-	default:
-		cli.PrintUsage()
-		return fmt.Errorf("unknown command: '%s'", command)
+			reg := urso.ResolveToken(registerToken, urso.EnvVarRegisterToken)
+			rem := urso.ResolveToken(removeToken, urso.EnvVarRemoveToken)
+
+			return cli.Run(ctx, configPath, reg, rem)
+		},
 	}
-	return nil
+	runCmd.Flags().StringVar(&registerToken, "github-register-token", "", "token to register github actions runner")
+	runCmd.Flags().StringVar(&removeToken, "github-remove-token", "", "token to remove github actions runner")
+
+	// Command: install
+	installCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install urso as a service (paid license only)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
+			defer cancel()
+
+			return cli.Install(ctx, installToken)
+		},
+	}
+	installCmd.Flags().StringVar(&installToken, "urso-registration-token", "", "urso registration token")
+
+	rootCmd.AddCommand(initCmd, runCmd, installCmd)
+
+	return rootCmd
 }
 
-// defaultConfigPath returns the default path for the config file.
 func defaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		// This is unlikely to fail, but if it does, we'll fall back.
 		return "config.yaml"
 	}
 	return filepath.Join(home, ".urso", "config.yaml")
