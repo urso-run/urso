@@ -1,6 +1,8 @@
 package urso
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,6 +23,17 @@ type RunnerConfig struct {
 	Group  string   `yaml:"group"`
 	URL    string   `yaml:"url"`
 	Labels []string `yaml:"labels"`
+}
+
+// Validate ensures the runner configuration has all required fields.
+func (r RunnerConfig) Validate() error {
+	if r.Name == "" {
+		return errors.New("runner name is required")
+	}
+	if r.URL == "" {
+		return fmt.Errorf("runner %q: url is required", r.Name)
+	}
+	return nil
 }
 
 // Config defines the root configuration for the application.

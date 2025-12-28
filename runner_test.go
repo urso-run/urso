@@ -3,6 +3,7 @@ package urso
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -234,22 +235,36 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 		{
 			name:         "does nothing when in sync",
 			initialState: MachineState{Runners: map[string]struct{}{"existing-runner": {}}},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "existing-runner"}}},
+			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "existing-runner", URL: "http://example.com"}}},
 			assert:       assertDoesNothing,
 		},
 		{
 			name:         "creates and removes in the same run",
 			initialState: MachineState{Runners: map[string]struct{}{"old-runner": {}}},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner"}}},
+			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
 			assert:       assertCreatesAndRemoves,
 		},
 		{
 			name:          "passes correct tokens",
 			initialState:  MachineState{Runners: map[string]struct{}{"old-runner": {}}},
-			config:        Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner"}}},
+			config:        Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
 			registerToken: "REGISTER_TOKEN_123",
 			removeToken:   "REMOVE_TOKEN_456",
 			assert:        assertPassesCorrectTokens,
+		},
+		{
+			name:         "returns error for invalid runner config",
+			initialState: MachineState{Runners: make(map[string]struct{})},
+			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "invalid-runner", URL: ""}}},
+			assert: func(t *testing.T, _ testHarness, err error) {
+				t.Helper()
+				if err == nil {
+					t.Fatal("expected error for missing URL, but got nil")
+				}
+				if !strings.Contains(err.Error(), "url is required") {
+					t.Errorf("expected error message to contain 'url is required', but got: %v", err)
+				}
+			},
 		},
 	}
 

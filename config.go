@@ -43,7 +43,7 @@ func (f *FileSystemConfigStore) Exists() bool {
 // necessary directories if they don't exist.
 func (f *FileSystemConfigStore) Write(content []byte) error {
 	dir := filepath.Dir(f.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("could not create config directory: %w", err)
 	}
 	return os.WriteFile(f.path, content, 0600)

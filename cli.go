@@ -73,8 +73,8 @@ runners:
   - name: "default-runner"
     labels:
       - self-hosted
-      - linux
-      - x64
+      - macos
+      - arm64
     # url: "https://github.com/my-org"
 `
 	err := c.store.Write([]byte(defaultConfig))
@@ -144,21 +144,10 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 }
 
 func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
-	data, err := c.store.Read()
+	localConfig, err := c.loadLocalConfig()
 	if err != nil {
-		return fmt.Errorf("failed to read local config: %w", err)
+		return err
 	}
-
-	localConfig, err := ParseConfig(bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("failed to parse local config: %w", err)
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("could not get home directory: %w", err)
-	}
-	localConfig.ExpandPaths(home)
 
 	// Fetch the runner config from the API
 	c.logger.Info("fetching runner config from urso api")
@@ -199,14 +188,9 @@ func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
 }
 
 func (c *CLI) updateLocalConfig(runners []RunnerConfig) error {
-	data, err := c.store.Read()
+	cfg, err := c.loadLocalConfig()
 	if err != nil {
-		return fmt.Errorf("could not read config file: %w", err)
-	}
-
-	cfg, err := ParseConfig(bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("could not unmarshal config: %w", err)
+		return err
 	}
 
 	cfg.Runners = runners
@@ -236,4 +220,24 @@ func (c *CLI) registerMachine(ctx context.Context, registrationToken string) (st
 	}
 	c.logger.Info("machine registered successfully", "machine_id", machineID)
 	return machineID, machineToken, nil
+}
+
+func (c *CLI) loadLocalConfig() (Config, error) {
+	data, err := c.store.Read()
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to read local config: %w", err)
+	}
+
+	cfg, err := ParseConfig(bytes.NewReader(data))
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to parse local config: %w", err)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("could not get home directory: %w", err)
+	}
+	cfg.ExpandPaths(home)
+
+	return cfg, nil
 }

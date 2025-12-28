@@ -127,65 +127,72 @@ func NewGithubAPIDownloader(client *http.Client) *GithubAPIDownloader {
 	return &GithubAPIDownloader{client: client}
 }
 
-func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, dstDir string) (string, error) {
-	url, err := g.getLatestRunnerURL(ctx)
+func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, _ string) (string, error) {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("error getting latest runner url: %w", err)
+		return "", fmt.Errorf("could not get home directory: %w", err)
+	}
+	cacheDir := filepath.Join(home, ".urso", "cache")
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	archive := filepath.Join(dstDir, archiveFilename)
-	out, err := os.Create(archive)
+	release, err := g.fetchLatestRelease(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error creating file: %w", err)
+		return "", err
 	}
-	defer out.Close()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	archivePath := filepath.Join(cacheDir, archiveFilename)
+	versionPath := filepath.Join(cacheDir, "version.txt")
+
+	cachedVersion, _ := os.ReadFile(versionPath)
+	if string(cachedVersion) == release.TagName {
+		if _, err := os.Stat(archivePath); err == nil {
+			return archivePath, nil
+		}
+	}
+
+	downloadURL, err := g.getDownloadURL(release)
 	if err != nil {
-		return "", fmt.Errorf("new request: %w", err)
-	}
-	req.Header.Set("User-Agent", "go-http-client")
-	req.Header.Set("Accept", "application/octet-stream")
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("bad status: %s", resp.Status)
+		return "", err
 	}
 
-	if _, err = io.Copy(out, resp.Body); err != nil {
-		return "", fmt.Errorf("copy: %w", err)
+	if err := g.download(ctx, downloadURL, archivePath); err != nil {
+		return "", err
 	}
 
-	return archive, nil
+	if err := os.WriteFile(versionPath, []byte(release.TagName), 0600); err != nil {
+		return "", fmt.Errorf("failed to save cached version: %w", err)
+	}
+
+	return archivePath, nil
 }
 
-func (g *GithubAPIDownloader) getLatestRunnerURL(ctx context.Context) (string, error) {
+func (g *GithubAPIDownloader) fetchLatestRelease(ctx context.Context) (releaseResponse, error) {
 	url := "https://api.github.com/repos/actions/runner/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", fmt.Errorf("new request: %w", err)
+		return releaseResponse{}, fmt.Errorf("new request: %w", err)
 	}
 
 	r, err := g.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch latest release: %w", err)
+		return releaseResponse{}, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
 	defer r.Body.Close()
 
 	if r.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", r.StatusCode)
+		return releaseResponse{}, fmt.Errorf("unexpected status code: %d", r.StatusCode)
 	}
 
 	var release releaseResponse
 	if err := json.NewDecoder(r.Body).Decode(&release); err != nil {
-		return "", fmt.Errorf("failed to decode release info: %w", err)
+		return releaseResponse{}, fmt.Errorf("failed to decode release info: %w", err)
 	}
+	return release, nil
+}
 
+func (g *GithubAPIDownloader) getDownloadURL(release releaseResponse) (string, error) {
 	osPart := runtime.GOOS
 	if osPart == "darwin" {
 		osPart = "osx"
@@ -204,6 +211,36 @@ func (g *GithubAPIDownloader) getLatestRunnerURL(ctx context.Context) (string, e
 	}
 
 	return "", fmt.Errorf("no runner found for %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+func (g *GithubAPIDownloader) download(ctx context.Context, url, path string) error {
+	out, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("error creating file: %w", err)
+	}
+	defer out.Close()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("User-Agent", "go-http-client")
+	req.Header.Set("Accept", "application/octet-stream")
+
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		return fmt.Errorf("copy: %w", err)
+	}
+	return nil
 }
 
 // FileSystemMachine is the production implementation of MachineInspector
@@ -273,6 +310,12 @@ func NewRunnerSyncer(m MachineInspector, d ActionsDownloader, e RunnerExecutor, 
 
 // Sync contains the core logic for adding and removing runners.
 func (s *RunnerSyncer) Sync(ctx context.Context, cfg Config, registerToken, removeToken string) error {
+	for _, r := range cfg.Runners {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("invalid runner configuration: %w", err)
+		}
+	}
+
 	ms, err := s.machine.GetCurrentState(cfg.RootDir)
 	if err != nil {
 		return fmt.Errorf("could not get machine state: %w", err)

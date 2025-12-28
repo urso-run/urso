@@ -15,28 +15,24 @@ This file tracks the development tasks for the `urso` project.
 - [x] Securely handle token resolution (flags and env vars only).
 - [x] Propagate `context.Context` for timeouts and cancellation.
 - [x] Inject `http.Client` dependency.
-- [x] Implement macOS (`launchd`) service installation logic.
-- [x] Implement and unit-test the `APIClient` for all required endpoints.
-- [x] Implement and unit-test the `CredentialStore` for local storage.
+- [x] Implement macOS (`launchd`) service installation logic using modern `bootstrap/bootout` commands.
+- [x] Implement and unit-test the `APIClient` for all required endpoints with exponential backoff retries.
+- [x] Implement and unit-test the `CredentialStore` for local storage with restricted permissions.
 - [x] Refactor `install` command to perform the full API-driven workflow, including secure merging of local and remote configs.
-- [x] Add comprehensive unit tests for the `install` command's orchestration logic.
+- [x] Migrate CLI to `spf13/cobra` for professional flag and command management.
+- [x] Decouple configuration parsing and path expansion for better testability.
+- [x] Implement resilient synchronization that collects and reports multiple runner errors using `errors.Join`.
+- [x] Implement GitHub runner archive caching in `~/.urso/cache` with version validation against latest releases.
 
 ## Next Steps
 
-The client-side logic for both local (`run`) and API-driven (`install`) workflows is complete and unit-tested. The primary remaining task is to implement the specific workflow for the installed service to use.
-
-- [ ] **Finalize the Managed Service Workflow**
-  - [ ] Add a `--managed` flag to the `run` command.
-  - [ ] When `urso run --managed` is executed, the `CLI.Run` method should:
-    1. Ignore the `--config` flag and local `config.yaml` for runner definitions.
-    2. Load the machine ID and token from the `CredentialStore`.
-    3. Fetch the runner configuration and GitHub tokens from the API.
-    4. Load the local `config.yaml` **only to read the `rootDir`**.
-    5. Merge the trusted `rootDir` with the runners fetched from the API.
-    6. Execute the sync logic with the merged configuration and fetched tokens.
-  - [ ] Update the `launchd.plist` template in `service.go` to call `urso run --managed`.
-  - [ ] Add comprehensive unit tests for this new flag and logic in `TestCLI_Run`.
+The client-side logic and core synchronization engine are now robust and hardened. The focus moves to integration and maintenance.
 
 - [ ] **Live Integration Testing**
-  - [ ] Validate the `urso install` command against the live Urso API (once backend JWT `kid` issue is resolved).
-  - [ ] Validate the `urso run --managed` workflow after it is installed as a service.
+  - [ ] Validate the `urso install` command against the live Urso API.
+  - [ ] Verify that the `launchd` service correctly starts the sync process on load.
+  - [ ] Test the archive caching logic over several days to ensure seamless updates.
+
+- [ ] **Maintenance & Polish**
+  - [ ] Periodically review `launchd` log output for any edge cases in runner configuration.
+  - [ ] Monitor GitHub runner release patterns to ensure the 24-hour version check remains optimal.

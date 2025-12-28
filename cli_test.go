@@ -91,7 +91,7 @@ func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) 
 }
 func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]RunnerConfig, error) {
 	s.getRunnerConfigCalled = true
-	return []RunnerConfig{{Name: "api-runner"}}, nil
+	return []RunnerConfig{{Name: "api-runner", URL: "http://example.com"}}, nil
 }
 func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
