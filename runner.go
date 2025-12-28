@@ -120,11 +120,12 @@ func (l *LiveRunnerExecutor) Unconfigure(ctx context.Context, dir string, token 
 // that downloads the runner from the GitHub API.
 type GithubAPIDownloader struct {
 	client *http.Client
+	logger *slog.Logger
 }
 
 // NewGithubAPIDownloader creates a new downloader.
-func NewGithubAPIDownloader(client *http.Client) *GithubAPIDownloader {
-	return &GithubAPIDownloader{client: client}
+func NewGithubAPIDownloader(client *http.Client, logger *slog.Logger) *GithubAPIDownloader {
+	return &GithubAPIDownloader{client: client, logger: logger}
 }
 
 func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, _ string) (string, error) {
@@ -148,10 +149,12 @@ func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, _ string) (s
 	cachedVersion, _ := os.ReadFile(versionPath)
 	if string(cachedVersion) == release.TagName {
 		if _, err := os.Stat(archivePath); err == nil {
+			g.logger.Info("using cached runner archive", "version", release.TagName)
 			return archivePath, nil
 		}
 	}
 
+	g.logger.Info("downloading new runner archive", "version", release.TagName, "cache_dir", cacheDir)
 	downloadURL, err := g.getDownloadURL(release)
 	if err != nil {
 		return "", err

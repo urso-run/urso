@@ -66,7 +66,7 @@ func newRootCmd() *cobra.Command {
 	credStore, _ := urso.NewFileSystemCredentialStore()
 	syncer := urso.NewRunnerSyncer(
 		&urso.FileSystemMachine{},
-		urso.NewGithubAPIDownloader(httpClient),
+		urso.NewGithubAPIDownloader(httpClient, logger),
 		urso.NewLiveRunnerExecutor(out),
 		logger,
 	)
