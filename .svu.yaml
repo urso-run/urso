@@ -9,4 +9,4 @@ log.directory:
   - "."
 metadata: ""
 always: false
-v0: false
+v0: true

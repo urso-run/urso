@@ -79,8 +79,14 @@ type SpyAPIClient struct {
 	getRegisterTokenCalled  bool
 	getRemoveTokenCalled    bool
 
-	machineID    string
-	machineToken string
+	machineID           string
+	machineToken        string
+	runnerConfigs       []RunnerConfig
+	registerToken       string
+	removeToken         string
+	getRunnerConfigErr  error
+	getRegisterTokenErr error
+	getRemoveTokenErr   error
 }
 
 func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) (string, string, error) {
@@ -91,14 +97,32 @@ func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) 
 }
 func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]RunnerConfig, error) {
 	s.getRunnerConfigCalled = true
+	if s.getRunnerConfigErr != nil {
+		return nil, s.getRunnerConfigErr
+	}
+	if s.runnerConfigs != nil {
+		return s.runnerConfigs, nil
+	}
 	return []RunnerConfig{{Name: "api-runner", URL: "http://example.com"}}, nil
 }
 func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
+	if s.getRegisterTokenErr != nil {
+		return "", s.getRegisterTokenErr
+	}
+	if s.registerToken != "" {
+		return s.registerToken, nil
+	}
 	return "api-gh-reg-token", nil
 }
 func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _ string) (string, error) {
 	s.getRemoveTokenCalled = true
+	if s.getRemoveTokenErr != nil {
+		return "", s.getRemoveTokenErr
+	}
+	if s.removeToken != "" {
+		return s.removeToken, nil
+	}
 	return "api-gh-rem-token", nil
 }
 
@@ -107,6 +131,9 @@ type SpyCredentialStore struct {
 	loadCalled bool
 	savedID    string
 	savedToken string
+	loadID     string
+	loadToken  string
+	loadErr    error
 }
 
 func (s *SpyCredentialStore) Save(id, token string) error {
@@ -117,7 +144,13 @@ func (s *SpyCredentialStore) Save(id, token string) error {
 }
 func (s *SpyCredentialStore) Load() (string, string, error) {
 	s.loadCalled = true
-	return "loaded-id", "loaded-token", nil
+	if s.loadErr != nil {
+		return s.loadID, s.loadToken, s.loadErr
+	}
+	if s.loadID == "" && s.loadToken == "" {
+		return "", "", ErrMissingCredentials
+	}
+	return s.loadID, s.loadToken, nil
 }
 
 // --- Tests ---
@@ -165,26 +198,107 @@ func TestCLI_Init(t *testing.T) {
 	})
 }
 
-func TestCLI_Run(t *testing.T) {
-	t.Run("successfully calls syncer with provided config and tokens", func(t *testing.T) {
-		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
-		spySyncer := &SpySyncer{}
-		logger := slog.New(slog.DiscardHandler)
-		cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
+func TestCLI_Run_LocalSuccess(t *testing.T) {
+	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+	spySyncer := &SpySyncer{}
+	logger := slog.New(slog.DiscardHandler)
+	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
 
-		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "config.yaml")
-		if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
-			t.Fatalf("failed to write test config: %v", err)
-		}
-		err := cli.Run(context.TODO(), configPath, "reg-token", "rem-token")
-		if err != nil {
-			t.Fatalf("Run() returned an unexpected error: %v", err)
-		}
-		if !spySyncer.syncCalled {
-			t.Error("expected Sync to be called, but it wasn't")
-		}
-	})
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	err := cli.Run(context.TODO(), configPath, "reg-token", "rem-token")
+	if err != nil {
+		t.Fatalf("Run() returned an unexpected error: %v", err)
+	}
+	if !spySyncer.syncCalled {
+		t.Error("expected Sync to be called, but it wasn't")
+	}
+	if spySyncer.syncRegisterToken != "reg-token" {
+		t.Errorf("expected register token to be forwarded, got %s", spySyncer.syncRegisterToken)
+	}
+	if spySyncer.syncRemoveToken != "rem-token" {
+		t.Errorf("expected remove token to be forwarded, got %s", spySyncer.syncRemoveToken)
+	}
+}
+
+func TestCLI_Run_LocalRequiresTokens(t *testing.T) {
+	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+	spySyncer := &SpySyncer{}
+	logger := slog.New(slog.DiscardHandler)
+	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	err := cli.Run(context.TODO(), configPath, "", "rem-token")
+	if err == nil {
+		t.Fatal("expected an error for missing register token, got nil")
+	}
+	if !strings.Contains(err.Error(), "github-register-token") {
+		t.Fatalf("expected github-register-token error, got %v", err)
+	}
+	if spySyncer.syncCalled {
+		t.Fatal("expected syncer not to be called in error path")
+	}
+}
+
+func TestCLI_Run_LicensedFetchesFromAPI(t *testing.T) {
+	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+	spySyncer := &SpySyncer{}
+	logger := slog.New(slog.DiscardHandler)
+	spyAPI := &SpyAPIClient{
+		machineID:     "mid",
+		machineToken:  "mtok",
+		runnerConfigs: []RunnerConfig{{Name: "api-runner", URL: "https://github.com/org"}},
+		registerToken: "api-reg-token",
+		removeToken:   "api-rem-token",
+	}
+	spyCreds := &SpyCredentialStore{
+		loadID:    "mid",
+		loadToken: "mtok",
+	}
+	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, spyAPI, spyCreds, logger)
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("rootDir: /tmp/root\nrunners: []"), 0600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	if err := cli.Run(context.TODO(), configPath, "", ""); err != nil {
+		t.Fatalf("Run() returned an unexpected error: %v", err)
+	}
+
+	if !spyAPI.getRunnerConfigCalled {
+		t.Fatal("expected GetRunnerConfig to be called")
+	}
+	if !spyAPI.getRegisterTokenCalled {
+		t.Fatal("expected GetRegisterToken to be called")
+	}
+	if !spyAPI.getRemoveTokenCalled {
+		t.Fatal("expected GetRemoveToken to be called")
+	}
+	if !spySyncer.syncCalled {
+		t.Fatal("expected Sync to be called")
+	}
+	if spySyncer.syncRegisterToken != "api-reg-token" {
+		t.Fatalf("expected register token from API, got %s", spySyncer.syncRegisterToken)
+	}
+	if spySyncer.syncRemoveToken != "api-rem-token" {
+		t.Fatalf("expected remove token from API, got %s", spySyncer.syncRemoveToken)
+	}
+	if len(spySyncer.syncCfg.Runners) != 1 || spySyncer.syncCfg.Runners[0].Name != "api-runner" {
+		t.Fatalf("expected runners from API to be used, got %+v", spySyncer.syncCfg.Runners)
+	}
+	if spySyncer.syncCfg.RootDir != "/tmp/root" {
+		t.Fatalf("expected root dir from local config to be preserved, got %s", spySyncer.syncCfg.RootDir)
+	}
 }
 
 // installTestHarness is a helper struct for setting up install command tests.
@@ -225,6 +339,34 @@ func TestCLI_Install(t *testing.T) {
 			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
 		assertInstallStepsExecuted(t, h)
+	})
+
+	t.Run("is idempotent when credentials already exist", func(t *testing.T) {
+		h := newInstallTestHarness(t)
+		setupMockConfig(t, &h)
+		h.creds.loadID = "existing-id"
+		h.creds.loadToken = "existing-token"
+
+		err := h.cli.Install(context.TODO(), "")
+		if err != nil {
+			t.Fatalf("Install() returned an unexpected error: %v", err)
+		}
+
+		if !h.creds.loadCalled {
+			t.Fatalf("expected credential load to be called")
+		}
+		if h.api.registerMachineCalled {
+			t.Fatalf("expected RegisterMachine not to be called when credentials exist")
+		}
+		if h.creds.saveCalled {
+			t.Fatalf("expected Save not to be called when credentials exist")
+		}
+		if !h.syncer.syncCalled {
+			t.Fatalf("expected Sync to be called")
+		}
+		if !h.sm.installCalled {
+			t.Fatalf("expected ServiceManager.Install to be called")
+		}
 	})
 
 	t.Run("returns an error if init has not been run", func(t *testing.T) {

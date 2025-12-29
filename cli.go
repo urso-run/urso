@@ -96,7 +96,22 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
-	// Note: Token resolution is handled in main.go before calling this method.
+	licensed, machineID, machineToken, err := c.detectLicensed()
+	if err != nil {
+		return err
+	}
+
+	if licensed {
+		cfg, registerToken, removeToken, err = c.loadLicensedRunInputs(ctx, cfg, machineID, machineToken)
+		if err != nil {
+			return err
+		}
+	} else {
+		if err := c.ensureLocalTokens(registerToken, removeToken); err != nil {
+			return err
+		}
+	}
+
 	if err := c.syncer.Sync(ctx, cfg, registerToken, removeToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
@@ -110,28 +125,30 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	if !c.store.Exists() {
 		return fmt.Errorf("config file not found at %s, please run 'urso init' first", c.store.Path())
 	}
-	if registrationToken == "" {
+
+	machineID, machineToken, err := c.creds.Load()
+	switch {
+	case err == nil:
+		c.logger.Info("using existing machine credentials")
+	case !errors.Is(err, ErrMissingCredentials):
+		return fmt.Errorf("failed to load credentials: %w", err)
+	case registrationToken == "":
 		return errors.New("urso-registration-token is required for installation")
+	default:
+		machineID, machineToken, err = c.registerMachine(ctx, registrationToken)
+		if err != nil {
+			return err
+		}
+		c.logger.Info("saving machine credentials")
+		if err := c.creds.Save(machineID, machineToken); err != nil {
+			return fmt.Errorf("failed to save credentials: %w", err)
+		}
 	}
 
-	// 1. Register machine with Urso API
-	machineID, machineToken, err := c.registerMachine(ctx, registrationToken)
-	if err != nil {
-		return err
-	}
-
-	// 2. Save credentials
-	c.logger.Info("saving machine credentials")
-	if err := c.creds.Save(machineID, machineToken); err != nil {
-		return fmt.Errorf("failed to save credentials: %w", err)
-	}
-
-	// 3. Perform initial sync (fetches remote config, updates local file, and runs syncer)
 	if err := c.performInitialSync(ctx, machineID, machineToken); err != nil {
 		return err
 	}
 
-	// 4. Install the service
 	if c.sm == nil {
 		return ErrUnsupportedOS
 	}
@@ -146,6 +163,52 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		return err
 	}
 	fmt.Fprintln(c.errOut, "launchd logs: ~/Library/Logs/com.repeat.urso.log")
+	return nil
+}
+
+func (c *CLI) detectLicensed() (bool, string, string, error) {
+	if c.creds == nil || c.api == nil {
+		return false, "", "", nil
+	}
+
+	id, token, err := c.creds.Load()
+	if err == nil {
+		return true, id, token, nil
+	}
+	if errors.Is(err, ErrMissingCredentials) {
+		return false, "", "", nil
+	}
+	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
+}
+
+func (c *CLI) loadLicensedRunInputs(ctx context.Context, cfg Config, machineID, machineToken string) (Config, string, string, error) {
+	c.logger.Info("licensed mode detected: fetching runners and tokens from api")
+
+	apiRunners, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
+	if err != nil {
+		return Config{}, "", "", fmt.Errorf("error fetching runner config: %w", err)
+	}
+	cfg.Runners = apiRunners
+
+	registerToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
+	if err != nil {
+		return Config{}, "", "", fmt.Errorf("error fetching github register token: %w", err)
+	}
+	removeToken, err := c.api.GetRemoveToken(ctx, machineID, machineToken)
+	if err != nil {
+		return Config{}, "", "", fmt.Errorf("error fetching github remove token: %w", err)
+	}
+
+	return cfg, registerToken, removeToken, nil
+}
+
+func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
+	if registerToken == "" {
+		return errors.New("github-register-token is required in local mode")
+	}
+	if removeToken == "" {
+		return errors.New("github-remove-token is required in local mode")
+	}
 	return nil
 }
 
