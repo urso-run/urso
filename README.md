@@ -1,5 +1,7 @@
 <img src="./assets/urso-logo.png" width="200" alt="Urso Logo">
 
+[![codecov](https://codecov.io/gh/urso-run/urso/graph/badge.svg?token=HYC27GSMBM)](https://codecov.io/gh/urso-run/urso)
+
 # Urso – macOS GitHub Actions Runner Orchestrator
 
 Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners on macOS hosts. It can operate in two modes:
