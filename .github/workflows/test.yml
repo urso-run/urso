@@ -46,4 +46,8 @@ jobs:
       - name: Run Go tests with coverage
         run: |
           go generate ./...
-          go test -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
+          go test -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./... ./...
+      - uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: urso-run/urso
