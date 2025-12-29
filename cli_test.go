@@ -174,7 +174,7 @@ func TestCLI_Run(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.yaml")
-		if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
+		if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
 			t.Fatalf("failed to write test config: %v", err)
 		}
 		err := cli.Run(context.TODO(), configPath, "reg-token", "rem-token")

@@ -39,14 +39,17 @@ func NewGithubAPIDownloader(client *http.Client, logger *slog.Logger) *GithubAPI
 	return &GithubAPIDownloader{client: client, logger: logger}
 }
 
-func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, _ string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("could not get home directory: %w", err)
+func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, dstDir string) (string, error) {
+	cacheDir := dstDir
+	if cacheDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("could not get home directory: %w", err)
+		}
+		cacheDir = filepath.Join(home, ".urso", "cache")
 	}
-	cacheDir := filepath.Join(home, ".urso", "cache")
 	if err := os.MkdirAll(cacheDir, 0700); err != nil {
-		return "", fmt.Errorf("failed to create cache directory: %w", err)
+		return "", fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
 	}
 
 	release, err := g.fetchLatestRelease(ctx)

@@ -173,6 +173,9 @@ Implementation plan:
 
 - **Launchd plist** is generated at `~/Library/LaunchAgents/com.repeat.urso.plist`.
 - Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects licensed mode, no extra flags are needed once credentials exist.
+- Logging:
+  - Free/local mode (interactive CLI) writes to stdout/stderr only.
+  - Licensed/launchd mode writes stdout/stderr to `~/Library/Logs/com.repeat.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.repeat.urso.log` or `log stream --predicate 'process == "urso"'`.
 - `install` currently runs:
   1. `launchctl bootout gui/<uid> <plist>` (best-effort).
   2. `launchctl bootstrap gui/<uid> <plist>`.

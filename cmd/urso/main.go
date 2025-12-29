@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/repeat-dev/urso"
 	"github.com/spf13/cobra"
+
+	"github.com/repeat-dev/urso"
 )
 
 // These variables are set at build time via ldflags.
@@ -54,8 +55,8 @@ func newRootCmd() *cobra.Command {
 	logger := slog.New(slog.NewTextHandler(errOut, nil))
 	store, err := urso.NewFileSystemConfigStore()
 	if err != nil {
-		// We handle this during execution if needed, but logging it here for now
 		logger.Error("failed to initialize configuration store", "error", err)
+		os.Exit(1)
 	}
 	httpClient := urso.NewHTTPClient()
 	apiClient := &urso.DashboardAPIClient{
@@ -63,14 +64,21 @@ func newRootCmd() *cobra.Command {
 		HTTPClient: httpClient,
 		Logger:     logger,
 	}
-	credStore, _ := urso.NewFileSystemCredentialStore()
+	credStore, err := urso.NewFileSystemCredentialStore()
+	if err != nil {
+		logger.Error("failed to initialize credential store", "error", err)
+		os.Exit(1)
+	}
 	syncer := urso.NewRunnerSyncer(
 		&urso.FileSystemMachine{},
 		urso.NewGithubAPIDownloader(httpClient, logger),
 		urso.NewLiveRunnerExecutor(out),
 		logger,
 	)
-	sm, _ := urso.NewServiceManager(logger)
+	sm, err := urso.NewServiceManager(logger)
+	if err != nil {
+		logger.Warn("service manager unavailable", "error", err)
+	}
 
 	cli := urso.NewCLI(in, out, errOut, store, syncer, sm, apiClient, credStore, logger)
 

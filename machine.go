@@ -40,14 +40,16 @@ func (f *FileSystemMachine) GetCurrentState(rootDir string) (MachineState, error
 		return s, fmt.Errorf("error reading root dir: %v", rootDir)
 	}
 	for _, d := range dirs {
-		s.Runners[d.Name()] = struct{}{}
+		if d.IsDir() {
+			s.Runners[d.Name()] = struct{}{}
+		}
 	}
 	return s, nil
 }
 
 // EnsureRootDirExists creates the root directory if it doesn't exist.
 func (f *FileSystemMachine) EnsureRootDirExists(rootDir string) error {
-	return os.MkdirAll(rootDir, 0755)
+	return os.MkdirAll(rootDir, 0700)
 }
 
 // CreateTempDir creates a new temporary directory in the specified directory.
@@ -62,12 +64,12 @@ func (f *FileSystemMachine) RemoveAll(path string) error {
 
 // MkdirAll creates a directory path, along with any necessary parents.
 func (f *FileSystemMachine) MkdirAll(path string) error {
-	return os.MkdirAll(path, 0755)
+	return os.MkdirAll(path, 0700)
 }
 
 func supported(os, arch string) bool {
 	switch strings.Join([]string{os, arch}, "/") {
-	case "darwin/arm64", "linux/amd64", "linux/arm64":
+	case "darwin/arm64", "darwin/amd64":
 		return true
 	default:
 		return false

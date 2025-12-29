@@ -69,13 +69,15 @@ func (c *CLI) Init() error {
 	}
 
 	defaultConfig := `rootDir: ".urso/runners"
+# Replace this URL with the GitHub org or repo you want this runner to serve.
 runners:
   - name: "default-runner"
+    url: "https://github.com/your-org"
+    group: "Default"
     labels:
       - self-hosted
       - macos
       - arm64
-    # url: "https://github.com/my-org"
 `
 	err := c.store.Write([]byte(defaultConfig))
 	if err != nil {
@@ -140,7 +142,11 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	}
 
 	c.logger.Info("installing system service")
-	return c.sm.Install(ctx, executablePath)
+	if err := c.sm.Install(ctx, executablePath); err != nil {
+		return err
+	}
+	fmt.Fprintln(c.errOut, "launchd logs: ~/Library/Logs/com.repeat.urso.log")
+	return nil
 }
 
 func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {

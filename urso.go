@@ -73,9 +73,15 @@ func NewConfig(configPath string) (Config, error) {
 
 // ParseConfig decodes the YAML configuration from an io.Reader.
 func ParseConfig(r io.Reader) (Config, error) {
+	dec := yaml.NewDecoder(r)
+	dec.KnownFields(true)
+
 	var cfg Config
-	if err := yaml.NewDecoder(r).Decode(&cfg); err != nil {
+	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, err
+	}
+	if cfg.RootDir == "" {
+		return Config{}, errors.New("rootDir is required")
 	}
 	return cfg, nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
 )
 
@@ -129,6 +130,13 @@ func (s *RunnerSyncer) createRunner(ctx context.Context, rootDir string, cfg Run
 	runnerDir := path.Join(rootDir, cfg.Name)
 	if err := s.machine.MkdirAll(runnerDir); err != nil {
 		return fmt.Errorf("mkdir runner: %w", err)
+	}
+	if err := os.Chmod(runnerDir, 0700); err != nil {
+		if os.IsNotExist(err) {
+			s.logger.Warn("runner dir missing during chmod, skipping", "dir", runnerDir, "error", err)
+		} else {
+			return fmt.Errorf("chmod runner dir: %w", err)
+		}
 	}
 	if err := s.executor.Extract(ctx, archive, runnerDir); err != nil {
 		return fmt.Errorf("extract runner: %w", err)
