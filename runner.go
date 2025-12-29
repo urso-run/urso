@@ -101,17 +101,12 @@ func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToC
 		return errors.New("error creating runners: github-register-token not found")
 	}
 
-	tempDir, err := s.machine.CreateTempDir(cfg.RootDir, "runner-archive")
-	if err != nil {
-		return fmt.Errorf("error creating archive dir: %w", err)
+	cacheDir := path.Join(cfg.RootDir, ".cache")
+	if err := s.machine.MkdirAll(cacheDir); err != nil {
+		return fmt.Errorf("error creating cache dir: %w", err)
 	}
-	defer func() {
-		if err := s.machine.RemoveAll(tempDir); err != nil {
-			s.logger.Warn("failed to clean up temp dir", "path", tempDir, "error", err)
-		}
-	}()
 
-	archivePath, err := s.downloader.GetRunnerArchive(ctx, tempDir)
+	archivePath, err := s.downloader.GetRunnerArchive(ctx, cacheDir)
 	if err != nil {
 		return fmt.Errorf("error getting runner archive: %w", err)
 	}

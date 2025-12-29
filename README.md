@@ -107,7 +107,7 @@ urso install --urso-registration-token <org JWT>
   4. Install/refresh the launchd service so it runs `urso run` automatically.
 - Should be **idempotent**: running it multiple times refreshes configuration and service definitions without side effects.
 
-### (Proposed) `urso uninstall` / `urso service stop|start`
+### (Proposed) `urso uninstall`
 
 Not currently implemented. See [Open Questions](#roadmap--open-questions).
 
@@ -239,8 +239,8 @@ Implementation plan:
 ### Open Questions
 
 - **Uninstall command?** Decide whether to ship `urso uninstall` for launchd cleanup or document manual `launchctl bootout` steps.
-- **Service lifecycle helpers?** Should we provide `urso service stop/start` wrappers, or rely on direct `launchctl` usage?
-- **Automatic service start?** Current plan is “install and start immediately.” Confirm this matches operator expectations.
+- **Service lifecycle helpers?** Should we provide `urso service stop/start` wrappers, or rely on direct `launchctl` usage? No.
+- **Automatic service start?** Current plan is “install and start immediately.”
 - **Credential rotation?** Define how to rotate machine credentials if compromised (probably via `install` re-run).
 
 Document decisions in this README as they are made.

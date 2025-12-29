@@ -15,6 +15,8 @@ type CredentialStore interface {
 	Load() (id, token string, err error)
 }
 
+var ErrMissingCredentials = errors.New("credentials not found")
+
 // FileSystemCredentialStore is the live implementation of CredentialStore that
 // saves credentials to a JSON file on the local filesystem.
 type FileSystemCredentialStore struct {
@@ -67,7 +69,7 @@ func (s *FileSystemCredentialStore) Load() (string, string, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", "", fmt.Errorf("credentials file not found at %s: please run 'urso install' first", s.path)
+			return "", "", fmt.Errorf("credentials file not found at %s: %w", s.path, ErrMissingCredentials)
 		}
 		return "", "", fmt.Errorf("failed to read credentials file: %w", err)
 	}
