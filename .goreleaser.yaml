@@ -24,6 +24,7 @@ builds:
       - arm64
     # ensures mod timestamp to be the commit timestamp
     mod_timestamp: "{{ .CommitTimestamp }}"
+    main: ./cmd/urso
 
 source:
   enabled: true
