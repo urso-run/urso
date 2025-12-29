@@ -40,9 +40,10 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-          key: go-test
+            ~/go/pkg/mod
+          key: go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            go-test
+            go-
       - name: Run Go tests with coverage
         run: |
           go generate ./...

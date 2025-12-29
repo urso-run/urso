@@ -18,4 +18,13 @@ jobs:
       - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         with:
           go-version-file: go.mod
+      - name: Go build cache
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            go-
       - run: make build
