@@ -96,13 +96,13 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
-	licensed, machineID, machineToken, err := c.detectLicensed()
+	managed, machineID, machineToken, err := c.detectManaged()
 	if err != nil {
 		return err
 	}
 
-	if licensed {
-		cfg, registerToken, removeToken, err = c.loadLicensedRunInputs(ctx, cfg, machineID, machineToken)
+	if managed {
+		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, machineID, machineToken)
 		if err != nil {
 			return err
 		}
@@ -166,7 +166,7 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	return nil
 }
 
-func (c *CLI) detectLicensed() (bool, string, string, error) {
+func (c *CLI) detectManaged() (bool, string, string, error) {
 	if c.creds == nil || c.api == nil {
 		return false, "", "", nil
 	}
@@ -181,8 +181,8 @@ func (c *CLI) detectLicensed() (bool, string, string, error) {
 	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
 }
 
-func (c *CLI) loadLicensedRunInputs(ctx context.Context, cfg Config, machineID, machineToken string) (Config, string, string, error) {
-	c.logger.Info("licensed mode detected: fetching runners and tokens from api")
+func (c *CLI) loadManagedRunInputs(ctx context.Context, cfg Config, machineID, machineToken string) (Config, string, string, error) {
+	c.logger.Info("managed mode detected: fetching runners and tokens from api")
 
 	apiRunners, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
 	if err != nil {

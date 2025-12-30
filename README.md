@@ -7,7 +7,7 @@
 Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners on macOS hosts. It can operate in two modes:
 
 1. **Local / Free Mode** – You provide a `config.yaml` plus GitHub registration/removal tokens and Urso reconciles runners accordingly.
-2. **Licensed / Managed Mode** – The machine is registered with `https://urso.run`, credentials are cached locally, and Urso continuously pulls runner definitions and tokens from the API.
+2. **Managed / Cloud Mode** – The machine is registered with `https://urso.run`, credentials are cached locally, and Urso continuously pulls runner definitions and tokens from the API.
 
 > **Platform scope:** macOS (darwin) is the only supported operating system. All tooling, release artifacts, and service management are optimized for launchd. Linux/Windows support is explicitly out of scope.
 
@@ -20,7 +20,7 @@ Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners o
 3. [Installation & Quick Start](#installation--quick-start)
 4. [Command Reference](#command-reference)
 5. [Configuration and State Layout](#configuration-and-state-layout)
-6. [Local vs. Licensed Workflow](#local-vs-licensed-workflow)
+6. [Local vs. Managed Workflow](#local-vs-managed-workflow)
 7. [Service Management](#service-management)
 8. [Security Considerations](#security-considerations)
 9. [Testing & Tooling](#testing--tooling)
@@ -66,7 +66,7 @@ Key design decisions:
 The easiest way to install Urso on macOS is via the installation script:
 
 ```bash
-# For Licensed / Managed Mode
+# For Managed / Cloud Mode
 curl -sSL https://raw.githubusercontent.com/urso-run/urso/main/scripts/install.sh | sh -s -- <YOUR_REGISTRATION_TOKEN>
 
 # For Local / Free Mode
@@ -91,7 +91,7 @@ export GITHUB_REGISTER_TOKEN=...
 export GITHUB_REMOVE_TOKEN=...
 ~/.urso/bin/urso run
 
-# 3b. Licensed mode: install as a service (idempotent)
+# 3b. Managed mode: install as a service (idempotent)
 ~/.urso/bin/urso install --urso-registration-token <YOUR_REGISTRATION_TOKEN>
 
 # 4. (Optional) Add Urso to your PATH
@@ -113,7 +113,7 @@ source ~/.zshrc
 
 - **Dual behavior (planned implementation):**
   - If machine credentials are absent → operate in local/free mode by reading `config.yaml` and using CLI/env GitHub tokens.
-  - If credentials are present → operate in licensed mode (see [Local vs. Licensed Workflow](#local-vs-licensed-workflow)).
+  - If credentials are present → operate in managed mode (see [Local vs. Managed Workflow](#local-vs-managed-workflow)).
 - Supports `--config` (path override) and planned `--urso-home` (base directory override).
 - Executes a single reconciliation cycle; repeating runs are handled by launchd when installed.
 
@@ -140,7 +140,7 @@ Not currently implemented. See [Open Questions](#roadmap--open-questions).
 | Path | Purpose |
 |------|---------|
 | `config.yaml` | Local runner config & rootDir definition. |
-| `credentials.json` | Machine ID/token issued by Urso API (licensed mode). |
+| `credentials.json` | Machine ID/token issued by Urso API (managed mode). |
 | `cache/actions-runner.tar.gz` & `cache/version.txt` | Cached GitHub runner archive and version metadata. |
 | `logs/com.repeat.urso.log` | launchd stdout/stderr (defined in plist). |
 
@@ -171,9 +171,9 @@ runners:
 
 ---
 
-## Local vs. Licensed Workflow
+## Local vs. Managed Workflow
 
-| Aspect | Local / Free Mode | Licensed / Managed Mode |
+| Aspect | Local / Free Mode | Managed / Cloud Mode |
 |--------|-------------------|-------------------------|
 | Credentials | Not present | `credentials.json` populated via `install`. |
 | Runner Source | Only `config.yaml`. | Remote API runners merged into local `rootDir`. |
@@ -192,10 +192,10 @@ Implementation plan:
 ## Service Management
 
 - **Launchd plist** is generated at `~/Library/LaunchAgents/com.repeat.urso.plist`.
-- Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects licensed mode, no extra flags are needed once credentials exist.
+- Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects managed mode, no extra flags are needed once credentials exist.
 - Logging:
   - Free/local mode (interactive CLI) writes to stdout/stderr only.
-  - Licensed/launchd mode writes stdout/stderr to `~/Library/Logs/com.repeat.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.repeat.urso.log` or `log stream --predicate 'process == "urso"'`.
+  - Managed/launchd mode writes stdout/stderr to `~/Library/Logs/com.repeat.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.repeat.urso.log` or `log stream --predicate 'process == "urso"'`.
 - `install` currently runs:
   1. `launchctl bootout gui/<uid> <plist>` (best-effort).
   2. `launchctl bootstrap gui/<uid> <plist>`.
@@ -228,7 +228,7 @@ Implementation plan:
 ### High-priority (from previous TODO + new analysis)
 
 1. **Dual-mode `run` implementation**
-   - Auto-detect credentials, fetch remote config/tokens when licensed.
+   - Auto-detect credentials, fetch remote config/tokens when managed.
    - Update unit tests (`cli_test.go`) to cover both branches.
 
 2. **Idempotent `install` workflow**

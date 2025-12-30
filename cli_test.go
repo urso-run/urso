@@ -248,7 +248,7 @@ func TestCLI_Run_LocalRequiresTokens(t *testing.T) {
 	}
 }
 
-func TestCLI_Run_LicensedFetchesFromAPI(t *testing.T) {
+func TestCLI_Run_ManagedFetchesFromAPI(t *testing.T) {
 	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	spySyncer := &SpySyncer{}
 	logger := slog.New(slog.DiscardHandler)

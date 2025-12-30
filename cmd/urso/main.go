@@ -111,7 +111,7 @@ func newRootCmd() *cobra.Command {
 	// Command: install
 	installCmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install urso as a service (paid license only)",
+		Short: "Install urso as a service (managed/cloud only)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
 			defer cancel()

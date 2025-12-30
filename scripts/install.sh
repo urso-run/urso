@@ -85,7 +85,7 @@ main() {
   # Run init from the new path.
   "$install_path" init < /dev/null || echo "Note: 'urso init' skipped or already initialized."
 
-  # 9. Handle Licensed Mode if Token Provided
+  # 9. Handle Managed Mode if Token Provided
   if [ -n "$token" ]; then
     echo "Registration token provided. Installing Urso as a service..."
     "$install_path" install --urso-registration-token "$token"
@@ -107,7 +107,7 @@ main() {
   esac
 
   if [ -z "$token" ]; then
-    echo "To use licensed mode, run:"
+    echo "To use managed mode, run:"
     echo "  $install_path install --urso-registration-token <YOUR_TOKEN>"
   fi
 }
