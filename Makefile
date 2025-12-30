@@ -7,11 +7,14 @@ endif
 
 ZSH_COMPLETION_DIR ?= $(HOME)/.zsh/completions
 
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
-COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "none")
-DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "unknown")
+# Build information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || cat VERSION 2>/dev/null || echo "dev")
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE    ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "unknown")
 
-LDFLAGS = -ldflags="\
+# Go build flags
+# -s -w strips debug info for a smaller binary
+LDFLAGS = -ldflags="-s -w \
 	-X 'main.version=$(VERSION)' \
 	-X 'main.commit=$(COMMIT)' \
 	-X 'main.date=$(DATE)'"
@@ -51,6 +54,12 @@ clean: ## Remove build artifacts
 .PHONY: test
 test: ## Run tests
 	go test -v -race -count=1 -timeout=30s ./...
+
+.PHONY: coverage
+coverage: ## Run tests and generate coverage report
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated at coverage.html"
 
 .PHONY: tidy
 tidy: ## Tidy and verify go modules
