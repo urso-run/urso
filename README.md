@@ -114,7 +114,7 @@ source ~/.zshrc
 - **Dual behavior:**
   - If machine credentials are absent → operate in local/free mode by reading `config.yaml` and using CLI/env GitHub tokens.
   - If credentials are present → operate in managed mode. It pulls runner definitions from the API and ignores `config.yaml` entirely.
-- All state is derived from `--urso-home` (default: `~/.urso`). The `--config` flag is deprecated.
+- All state is derived from `--urso-home` (default: `~/.urso`).
 - Executes a single reconciliation cycle; repeating runs are handled by launchd when installed.
 
 ### `urso install`
@@ -126,9 +126,10 @@ source ~/.zshrc
   4. Install/refresh the launchd service so it runs `urso run` automatically.
 - Should be **idempotent**: running it multiple times refreshes configuration and service definitions without side effects.
 
-### (Proposed) `urso uninstall`
+### `urso uninstall`
 
-Not currently implemented. See [Open Questions](#roadmap--open-questions).
+- Removes the launchd service plist.
+- Stops the background agent.
 
 ---
 
@@ -142,8 +143,6 @@ Not currently implemented. See [Open Questions](#roadmap--open-questions).
 | `credentials.json` | Machine ID/token issued by Urso API (managed mode). |
 | `cache/actions-runner.tar.gz` & `cache/version.txt` | Cached GitHub runner archive and version metadata. |
 | `logs/com.urso-run.urso.log` | launchd stdout/stderr (defined in plist). |
-
-Future work: make the home directory configurable via `--urso-home` and ensure every component respects it.
 
 ### Sample `config.yaml`
 
@@ -164,7 +163,7 @@ runners:
 
 - Runner `name` and `url` are required.
 - Additional validation (labels, groups) should be tightened in future iterations.
-- YAML parsing should enable `KnownFields(true)` so typos are surfaced early (pending improvement).
+- YAML parsing enforces strict field checking (`KnownFields(true)`) to catch typos or legacy configuration keys (like `rootDir`).
 
 ---
 
@@ -231,9 +230,9 @@ Workflow logic:
 2. **Idempotent `install` workflow (Completed)**
    - Skip re-registration if credentials exist.
    - Ensure launchd always runs `urso run`.
-
+ 
 3. **Urso Home abstraction (Completed)**
-   - Add `--urso-home` flag and deprecate `--config`.
+   - Add `--urso-home` flag and removed `--config`.
    - Centralize path derivation for config, credentials, cache, logs, and tests.
    - Removed `rootDir` from configuration; it's now strictly relative to Urso Home.
 
@@ -241,7 +240,7 @@ Workflow logic:
    - Keep this file as the single source of truth; deprecate `TODO.md` and `HANDOFF_SUMMARY.md`.
 
 5. **Better validation & error reporting**
-   - Enable YAML known-field checking.
+   - YAML known-field checking is enforced.
    - Improve filesystem error messages (`FileSystemMachine`).
    - Filter non-runner directories when determining existing runners.
 
@@ -254,10 +253,7 @@ Workflow logic:
    - Introduce service-level tests if feasible.
 
 ### Open Questions
-
-- **Uninstall command?** Decide whether to ship `urso uninstall` for launchd cleanup or document manual `launchctl bootout` steps.
-- **Service lifecycle helpers?** Should we provide `urso service stop/start` wrappers, or rely on direct `launchctl` usage? No.
-- **Automatic service start?** Current plan is “install and start immediately.”
+ 
 - **Credential rotation?** Define how to rotate machine credentials if compromised (probably via `install` re-run).
 
 Document decisions in this README as they are made.
