@@ -24,14 +24,10 @@ type FileSystemCredentialStore struct {
 }
 
 // NewFileSystemCredentialStore creates a credential store that operates on the
-// default path (~/.urso/credentials.json).
-func NewFileSystemCredentialStore() (*FileSystemCredentialStore, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("could not get user home directory: %w", err)
-	}
-	credPath := filepath.Join(home, ".urso", "credentials.json")
-	return &FileSystemCredentialStore{path: credPath}, nil
+// provided ursoHome directory.
+func NewFileSystemCredentialStore(ursoHome string) *FileSystemCredentialStore {
+	credPath := filepath.Join(ursoHome, "credentials.json")
+	return &FileSystemCredentialStore{path: credPath}
 }
 
 type credentials struct {

@@ -223,31 +223,31 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 		{
 			name:         "creates a runner",
 			initialState: MachineState{Runners: make(map[string]struct{})},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
 			assert:       assertCreatesRunner,
 		},
 		{
 			name:         "removes a runner",
 			initialState: MachineState{Runners: map[string]struct{}{"old-runner": {}}},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{}},
+			config:       Config{Runners: []RunnerConfig{}},
 			assert:       assertRemovesRunner,
 		},
 		{
 			name:         "does nothing when in sync",
 			initialState: MachineState{Runners: map[string]struct{}{"existing-runner": {}}},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "existing-runner", URL: "http://example.com"}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "existing-runner", URL: "http://example.com"}}},
 			assert:       assertDoesNothing,
 		},
 		{
 			name:         "creates and removes in the same run",
 			initialState: MachineState{Runners: map[string]struct{}{"old-runner": {}}},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
 			assert:       assertCreatesAndRemoves,
 		},
 		{
 			name:          "passes correct tokens",
 			initialState:  MachineState{Runners: map[string]struct{}{"old-runner": {}}},
-			config:        Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
+			config:        Config{Runners: []RunnerConfig{{Name: "new-runner", URL: "http://example.com"}}},
 			registerToken: "REGISTER_TOKEN_123",
 			removeToken:   "REMOVE_TOKEN_456",
 			assert:        assertPassesCorrectTokens,
@@ -255,7 +255,7 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 		{
 			name:         "returns error for invalid runner config",
 			initialState: MachineState{Runners: make(map[string]struct{})},
-			config:       Config{RootDir: "/test/runners", Runners: []RunnerConfig{{Name: "invalid-runner", URL: ""}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "invalid-runner", URL: ""}}},
 			assert: func(t *testing.T, _ testHarness, err error) {
 				t.Helper()
 				if err == nil {
@@ -282,7 +282,7 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 				removeToken = tc.removeToken
 			}
 
-			err := h.syncer.Sync(context.TODO(), tc.config, registerToken, removeToken)
+			err := h.syncer.Sync(context.TODO(), "/test/runners", tc.config, registerToken, removeToken)
 
 			if tc.assert != nil {
 				tc.assert(t, h, err)

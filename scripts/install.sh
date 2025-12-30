@@ -80,16 +80,15 @@ main() {
     chmod +x "$install_path"
   fi
 
-  # 8. Initialize
-  echo "Initializing Urso..."
-  # Run init from the new path.
-  "$install_path" init < /dev/null || echo "Note: 'urso init' skipped or already initialized."
-
-  # 9. Handle Managed Mode if Token Provided
+  # 8. Handle Managed Mode if Token Provided
   if [ -n "$token" ]; then
     echo "Registration token provided. Installing Urso as a service..."
     "$install_path" install --urso-registration-token "$token"
   else
+    # 9. Initialize for Standalone Mode
+    echo "Initializing Urso..."
+    # Run init from the new path.
+    "$install_path" init < /dev/null || echo "Note: 'urso init' skipped or already initialized."
     echo ""
     echo "Installation complete!"
   fi

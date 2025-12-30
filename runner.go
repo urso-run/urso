@@ -13,7 +13,7 @@ import (
 
 // Syncer defines the interface for the core synchronization logic.
 type Syncer interface {
-	Sync(ctx context.Context, cfg Config, registerToken, removeToken string) error
+	Sync(ctx context.Context, rootDir string, cfg Config, registerToken, removeToken string) error
 }
 
 // --- Live Implementations ---
@@ -34,28 +34,28 @@ func NewRunnerSyncer(m MachineInspector, d ActionsDownloader, e RunnerExecutor, 
 }
 
 // Sync contains the core logic for adding and removing runners.
-func (s *RunnerSyncer) Sync(ctx context.Context, cfg Config, registerToken, removeToken string) error {
+func (s *RunnerSyncer) Sync(ctx context.Context, rootDir string, cfg Config, registerToken, removeToken string) error {
 	for _, r := range cfg.Runners {
 		if err := r.Validate(); err != nil {
 			return fmt.Errorf("invalid runner configuration: %w", err)
 		}
 	}
 
-	ms, err := s.machine.GetCurrentState(cfg.RootDir)
+	ms, err := s.machine.GetCurrentState(rootDir)
 	if err != nil {
 		return fmt.Errorf("could not get machine state: %w", err)
 	}
 
 	if !ms.RootExists {
-		if err := s.machine.EnsureRootDirExists(cfg.RootDir); err != nil {
+		if err := s.machine.EnsureRootDirExists(rootDir); err != nil {
 			return fmt.Errorf("error creating root dir: %w", err)
 		}
 	}
 
 	runnersToCreate, runnersToRemove := s.plan(cfg, ms)
 
-	errRemove := s.removeRunners(ctx, cfg.RootDir, runnersToRemove, removeToken)
-	errCreate := s.createRunners(ctx, cfg, runnersToCreate, registerToken)
+	errRemove := s.removeRunners(ctx, rootDir, runnersToRemove, removeToken)
+	errCreate := s.createRunners(ctx, rootDir, runnersToCreate, registerToken)
 
 	return errors.Join(errRemove, errCreate)
 }
@@ -92,7 +92,7 @@ func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runner
 	return errors.Join(errs...)
 }
 
-func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToCreate []RunnerConfig, registerToken string) error {
+func (s *RunnerSyncer) createRunners(ctx context.Context, rootDir string, runnersToCreate []RunnerConfig, registerToken string) error {
 	if len(runnersToCreate) == 0 {
 		return nil
 	}
@@ -101,11 +101,7 @@ func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToC
 		return errors.New("error creating runners: github-register-token not found")
 	}
 
-	cacheDir := path.Join(cfg.RootDir, ".cache")
-	if err := s.machine.MkdirAll(cacheDir); err != nil {
-		return fmt.Errorf("error creating cache dir: %w", err)
-	}
-
+	cacheDir := path.Join(rootDir, ".cache")
 	archivePath, err := s.downloader.GetRunnerArchive(ctx, cacheDir)
 	if err != nil {
 		return fmt.Errorf("error getting runner archive: %w", err)
@@ -113,7 +109,7 @@ func (s *RunnerSyncer) createRunners(ctx context.Context, cfg Config, runnersToC
 
 	var errs []error
 	for _, runner := range runnersToCreate {
-		if err := s.createRunner(ctx, cfg.RootDir, runner, archivePath, registerToken); err != nil {
+		if err := s.createRunner(ctx, rootDir, runner, archivePath, registerToken); err != nil {
 			s.logger.Error("failed to create runner", "runner", runner.Name, "error", err)
 			errs = append(errs, fmt.Errorf("failed to create runner %s: %w", runner.Name, err))
 		}

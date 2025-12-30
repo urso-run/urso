@@ -31,7 +31,7 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	var (
-		configPath    string
+		ursoHome      string
 		registerToken string
 		removeToken   string
 		installToken  string
@@ -44,7 +44,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	// Persistent flags available to all subcommands
-	rootCmd.PersistentFlags().StringVar(&configPath, "config", defaultConfigPath(), "path to the configuration file")
+	rootCmd.PersistentFlags().StringVar(&ursoHome, "urso-home", defaultUrsoHome(), "base directory for urso configuration and state")
 
 	// Standard streams
 	out := os.Stdout
@@ -53,22 +53,15 @@ func newRootCmd() *cobra.Command {
 
 	// Dependencies
 	logger := slog.New(slog.NewTextHandler(errOut, nil))
-	store, err := urso.NewFileSystemConfigStore()
-	if err != nil {
-		logger.Error("failed to initialize configuration store", "error", err)
-		os.Exit(1)
-	}
+
+	store := urso.NewFileSystemConfigStore(ursoHome)
 	httpClient := urso.NewHTTPClient()
 	apiClient := &urso.DashboardAPIClient{
 		BaseURL:    "https://urso.run",
 		HTTPClient: httpClient,
 		Logger:     logger,
 	}
-	credStore, err := urso.NewFileSystemCredentialStore()
-	if err != nil {
-		logger.Error("failed to initialize credential store", "error", err)
-		os.Exit(1)
-	}
+	credStore := urso.NewFileSystemCredentialStore(ursoHome)
 	syncer := urso.NewRunnerSyncer(
 		&urso.FileSystemMachine{},
 		urso.NewGithubAPIDownloader(httpClient, logger),
@@ -102,7 +95,7 @@ func newRootCmd() *cobra.Command {
 			reg := urso.ResolveToken(registerToken, urso.EnvVarRegisterToken)
 			rem := urso.ResolveToken(removeToken, urso.EnvVarRemoveToken)
 
-			return cli.Run(ctx, configPath, reg, rem)
+			return cli.Run(ctx, store.Path(), reg, rem)
 		},
 	}
 	runCmd.Flags().StringVar(&registerToken, "github-register-token", "", "token to register github actions runner")
@@ -138,10 +131,10 @@ func newRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func defaultConfigPath() string {
+func defaultUrsoHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "config.yaml"
+		return ".urso"
 	}
-	return filepath.Join(home, ".urso", "config.yaml")
+	return filepath.Join(home, ".urso")
 }

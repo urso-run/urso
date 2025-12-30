@@ -2,16 +2,14 @@ package urso
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // CLI holds the logic for the urso application, decoupled from the OS via interfaces.
@@ -68,8 +66,7 @@ func (c *CLI) Init() error {
 		}
 	}
 
-	defaultConfig := `rootDir: ".urso/runners"
-# Replace this URL with the GitHub org or repo you want this runner to serve.
+	defaultConfig := `# Replace this URL with the GitHub org or repo you want this runner to serve.
 runners:
   - name: "default-runner"
     url: "https://github.com/your-org"
@@ -91,28 +88,31 @@ runners:
 
 // Run executes the main sync logic using the provided configuration and tokens.
 func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken string) error {
-	cfg, err := NewConfig(configPath)
-	if err != nil {
-		return fmt.Errorf("error loading config: %w", err)
-	}
-
 	managed, machineID, machineToken, err := c.detectManaged()
 	if err != nil {
 		return err
 	}
 
+	rootDir := filepath.Join(c.store.UrsoHome(), "runners")
+
+	var cfg Config
 	if managed {
 		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, machineID, machineToken)
 		if err != nil {
 			return err
 		}
 	} else {
+		cfg, err = NewConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("error loading config: %w", err)
+		}
+
 		if err := c.ensureLocalTokens(registerToken, removeToken); err != nil {
 			return err
 		}
 	}
 
-	if err := c.syncer.Sync(ctx, cfg, registerToken, removeToken); err != nil {
+	if err := c.syncer.Sync(ctx, rootDir, cfg, registerToken, removeToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil
@@ -121,10 +121,6 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 // Install handles the logic for the 'install' command.
 func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	c.logger.Info("starting urso service installation")
-
-	if !c.store.Exists() {
-		return fmt.Errorf("config file not found at %s, please run 'urso init' first", c.store.Path())
-	}
 
 	machineID, machineToken, err := c.creds.Load()
 	switch {
@@ -229,10 +225,7 @@ func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
 }
 
 func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
-	localConfig, err := c.loadLocalConfig()
-	if err != nil {
-		return err
-	}
+	rootDir := filepath.Join(c.store.UrsoHome(), "runners")
 
 	// Fetch the runner config from the API
 	c.logger.Info("fetching runner config from urso api")
@@ -241,10 +234,8 @@ func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
 		return fmt.Errorf("failed to get runner config: %w", err)
 	}
 
-	// Update local config with runners from API
-	c.logger.Info("updating local config with api runners")
-	if err := c.updateLocalConfig(apiRunners); err != nil {
-		return fmt.Errorf("failed to update local config: %w", err)
+	cfg := Config{
+		Runners: apiRunners,
 	}
 
 	// Fetch GitHub tokens from API
@@ -258,35 +249,10 @@ func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
 		return fmt.Errorf("failed to get github remove token: %w", err)
 	}
 
-	finalConfig := Config{
-		RootDir: localConfig.RootDir,
-		Runners: apiRunners,
-	}
-
 	// Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, finalConfig, ghRegisterToken, ghRemoveToken); err != nil {
+	if err := c.syncer.Sync(ctx, rootDir, cfg, ghRegisterToken, ghRemoveToken); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
-	}
-
-	return nil
-}
-
-func (c *CLI) updateLocalConfig(runners []RunnerConfig) error {
-	cfg, err := c.loadLocalConfig()
-	if err != nil {
-		return err
-	}
-
-	cfg.Runners = runners
-
-	updated, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("could not marshal updated config: %w", err)
-	}
-
-	if err := c.store.Write(updated); err != nil {
-		return fmt.Errorf("could not write updated config: %w", err)
 	}
 
 	return nil
@@ -305,24 +271,4 @@ func (c *CLI) registerMachine(ctx context.Context, registrationToken string) (st
 	}
 	c.logger.Info("machine registered successfully", "machine_id", machineID)
 	return machineID, machineToken, nil
-}
-
-func (c *CLI) loadLocalConfig() (Config, error) {
-	data, err := c.store.Read()
-	if err != nil {
-		return Config{}, fmt.Errorf("failed to read local config: %w", err)
-	}
-
-	cfg, err := ParseConfig(bytes.NewReader(data))
-	if err != nil {
-		return Config{}, fmt.Errorf("failed to parse local config: %w", err)
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Config{}, fmt.Errorf("could not get home directory: %w", err)
-	}
-	cfg.ExpandPaths(home)
-
-	return cfg, nil
 }

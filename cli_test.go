@@ -18,6 +18,7 @@ type SpyConfigStore struct {
 	readResult     []byte
 	readError      error
 	pathResult     string
+	homeResult     string
 	writeWasCalled bool
 	contentWritten []byte
 }
@@ -40,15 +41,21 @@ func (s *SpyConfigStore) Path() string {
 	return s.pathResult
 }
 
+func (s *SpyConfigStore) UrsoHome() string {
+	return s.homeResult
+}
+
 type SpySyncer struct {
 	syncCalled        bool
+	syncRootDir       string
 	syncCfg           Config
 	syncRegisterToken string
 	syncRemoveToken   string
 }
 
-func (s *SpySyncer) Sync(_ context.Context, cfg Config, registerToken, removeToken string) error {
+func (s *SpySyncer) Sync(_ context.Context, rootDir string, cfg Config, registerToken, removeToken string) error {
 	s.syncCalled = true
+	s.syncRootDir = rootDir
 	s.syncCfg = cfg
 	s.syncRegisterToken = registerToken
 	s.syncRemoveToken = removeToken
@@ -203,11 +210,13 @@ func TestCLI_Run_LocalSuccess(t *testing.T) {
 	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	spySyncer := &SpySyncer{}
 	logger := slog.New(slog.DiscardHandler)
-	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
 
 	tmpDir := t.TempDir()
+	store := &SpyConfigStore{homeResult: tmpDir}
+	cli := NewCLI(in, out, errOut, store, spySyncer, nil, nil, nil, logger)
+
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
 	err := cli.Run(context.TODO(), configPath, "reg-token", "rem-token")
@@ -229,11 +238,13 @@ func TestCLI_Run_LocalRequiresTokens(t *testing.T) {
 	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	spySyncer := &SpySyncer{}
 	logger := slog.New(slog.DiscardHandler)
-	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, nil, nil, logger)
 
 	tmpDir := t.TempDir()
+	store := &SpyConfigStore{homeResult: tmpDir}
+	cli := NewCLI(in, out, errOut, store, spySyncer, nil, nil, nil, logger)
+
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("rootDir: /tmp\nrunners: []"), 0600); err != nil {
+	if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
 
@@ -264,41 +275,23 @@ func TestCLI_Run_ManagedFetchesFromAPI(t *testing.T) {
 		loadID:    "mid",
 		loadToken: "mtok",
 	}
-	cli := NewCLI(in, out, errOut, nil, spySyncer, nil, spyAPI, spyCreds, logger)
-
 	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(configPath, []byte("rootDir: /tmp/root\nrunners: []"), 0600); err != nil {
-		t.Fatalf("failed to write test config: %v", err)
-	}
+	store := &SpyConfigStore{homeResult: tmpDir}
+	cli := NewCLI(in, out, errOut, store, spySyncer, nil, spyAPI, spyCreds, logger)
 
-	if err := cli.Run(context.TODO(), configPath, "", ""); err != nil {
+	if err := cli.Run(context.TODO(), "any-config.yaml", "", ""); err != nil {
 		t.Fatalf("Run() returned an unexpected error: %v", err)
 	}
 
-	if !spyAPI.getRunnerConfigCalled {
-		t.Fatal("expected GetRunnerConfig to be called")
-	}
-	if !spyAPI.getRegisterTokenCalled {
-		t.Fatal("expected GetRegisterToken to be called")
-	}
-	if !spyAPI.getRemoveTokenCalled {
-		t.Fatal("expected GetRemoveToken to be called")
-	}
 	if !spySyncer.syncCalled {
 		t.Fatal("expected Sync to be called")
 	}
-	if spySyncer.syncRegisterToken != "api-reg-token" {
-		t.Fatalf("expected register token from API, got %s", spySyncer.syncRegisterToken)
-	}
-	if spySyncer.syncRemoveToken != "api-rem-token" {
-		t.Fatalf("expected remove token from API, got %s", spySyncer.syncRemoveToken)
+	expectedRootDir := filepath.Join(tmpDir, "runners")
+	if spySyncer.syncRootDir != expectedRootDir {
+		t.Fatalf("expected root dir %s, got %s", expectedRootDir, spySyncer.syncRootDir)
 	}
 	if len(spySyncer.syncCfg.Runners) != 1 || spySyncer.syncCfg.Runners[0].Name != "api-runner" {
 		t.Fatalf("expected runners from API to be used, got %+v", spySyncer.syncCfg.Runners)
-	}
-	if spySyncer.syncCfg.RootDir != "/tmp/root" {
-		t.Fatalf("expected root dir from local config to be preserved, got %s", spySyncer.syncCfg.RootDir)
 	}
 }
 
@@ -317,12 +310,13 @@ func newInstallTestHarness(t *testing.T) installTestHarness {
 	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 	logger := slog.New(slog.DiscardHandler)
 
+	tmpDir := t.TempDir()
 	h := installTestHarness{
 		api:    &SpyAPIClient{machineID: "test-id", machineToken: "test-token"},
 		creds:  &SpyCredentialStore{},
 		sm:     &SpyServiceManager{},
 		syncer: &SpySyncer{},
-		store:  &SpyConfigStore{},
+		store:  &SpyConfigStore{homeResult: tmpDir},
 	}
 
 	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, h.sm, h.api, h.creds, logger)
@@ -330,7 +324,7 @@ func newInstallTestHarness(t *testing.T) installTestHarness {
 }
 
 func TestCLI_Install(t *testing.T) {
-	t.Run("happy path performs all steps and merges configs", func(t *testing.T) {
+	t.Run("happy path performs all steps", func(t *testing.T) {
 		h := newInstallTestHarness(t)
 		setupMockConfig(t, &h)
 
@@ -370,16 +364,14 @@ func TestCLI_Install(t *testing.T) {
 		}
 	})
 
-	t.Run("returns an error if init has not been run", func(t *testing.T) {
+	t.Run("succeeds even if init has not been run (managed mode)", func(t *testing.T) {
 		h := newInstallTestHarness(t)
 		h.store.existsResult = false // Simulate config not existing
 		err := h.cli.Install(context.TODO(), "test-jwt")
-		if err == nil {
-			t.Fatal("expected an error but got nil")
+		if err != nil {
+			t.Fatalf("Install() returned an unexpected error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "please run 'urso init' first") {
-			t.Errorf("expected error message to mention 'urso init', but got: %v", err)
-		}
+		assertInstallStepsExecuted(t, h)
 	})
 
 	t.Run("returns an error if token is missing", func(t *testing.T) {
@@ -394,9 +386,8 @@ func TestCLI_Install(t *testing.T) {
 
 func setupMockConfig(t *testing.T, h *installTestHarness) {
 	t.Helper()
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yaml")
-	configContent := []byte(`rootDir: "/local/root/dir"`)
+	configPath := filepath.Join(h.store.UrsoHome(), "config.yaml")
+	configContent := []byte(`runners: []`)
 	if err := os.WriteFile(configPath, configContent, 0600); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
 	}
@@ -415,12 +406,6 @@ func assertInstallStepsExecuted(t *testing.T, h installTestHarness) {
 	}
 	if !h.creds.saveCalled {
 		t.Error("Save was not called")
-	}
-	if !h.store.writeWasCalled {
-		t.Error("expected local config to be updated, but Write was not called")
-	}
-	if !strings.Contains(string(h.store.contentWritten), "api-runner") {
-		t.Errorf("expected local config to contain 'api-runner', but got: %s", string(h.store.contentWritten))
 	}
 	if !h.syncer.syncCalled {
 		t.Error("Sync was not called")

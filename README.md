@@ -6,8 +6,8 @@
 
 Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners on macOS hosts. It can operate in two modes:
 
-1. **Local / Free Mode** – You provide a `config.yaml` plus GitHub registration/removal tokens and Urso reconciles runners accordingly.
-2. **Managed / Cloud Mode** – The machine is registered with `https://urso.run`, credentials are cached locally, and Urso continuously pulls runner definitions and tokens from the API.
+1. **Local / Free Mode** – Operates standalone. You provide a `config.yaml` plus GitHub registration/removal tokens and Urso reconciles runners accordingly.
+2. **Managed / Cloud Mode** – The machine is registered with `https://urso.run`, credentials are cached locally, and Urso pulls runner definitions and tokens from the API. Configuration is kept in memory and does not require or modify `config.yaml`.
 
 > **Platform scope:** macOS (darwin) is the only supported operating system. All tooling, release artifacts, and service management are optimized for launchd. Linux/Windows support is explicitly out of scope.
 
@@ -55,8 +55,8 @@ Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners o
 Key design decisions:
 
 - **macOS only:** Non-darwin builds should fail fast; service management is launchd-specific.
-- **Single source of truth for paths:** The “Urso Home” (`~/.urso` by default) stores configs, credentials, logs, and cache. Tests should be able to override this root.
-- **RootDir trust boundary:** The local `config.yaml` is authoritative for `rootDir`; the API is trusted only for runner definitions and GitHub tokens.
+- **Single source of truth for paths:** The “Urso Home” (`~/.urso` by default) stores configs, credentials, logs, and cache.
+- **Urso Home as trust boundary:** The `--urso-home` flag (defaulting to `~/.urso`) defines where all runners, logs, and cache are stored. Standalone configuration is relative to this root.
 - **Error aggregation:** Runner creation/removal errors are joined so operators see every issue after a reconciliation pass.
 
 ---
@@ -107,23 +107,22 @@ source ~/.zshrc
 
 - Creates a starter `config.yaml` inside the Urso home directory.
 - If a config already exists, prompts before overwriting.
-- **Prerequisite** for both `run` and `install`. Future work: fail fast in those commands if `init` hasn’t been run.
+- **Prerequisite** for Local / Free Mode. Not required for Managed / Cloud Mode.
 
 ### `urso run`
 
-- **Dual behavior (planned implementation):**
+- **Dual behavior:**
   - If machine credentials are absent → operate in local/free mode by reading `config.yaml` and using CLI/env GitHub tokens.
-  - If credentials are present → operate in managed mode (see [Local vs. Managed Workflow](#local-vs-managed-workflow)).
-- Supports `--config` (path override) and planned `--urso-home` (base directory override).
+  - If credentials are present → operate in managed mode. It pulls runner definitions from the API and ignores `config.yaml` entirely.
+- All state is derived from `--urso-home` (default: `~/.urso`). The `--config` flag is deprecated.
 - Executes a single reconciliation cycle; repeating runs are handled by launchd when installed.
 
 ### `urso install`
 
-- Requires `urso init` to have been run (to establish `rootDir`).
 - Steps:
   1. Register machine with Urso API using `--urso-registration-token` (JWT). If already registered, re-use saved credentials.
   2. Persist machine credentials securely.
-  3. Fetch remote runner configuration and GitHub tokens, update local config, and perform an initial sync.
+  3. Fetch remote runner configuration and GitHub tokens and perform an initial sync.
   4. Install/refresh the launchd service so it runs `urso run` automatically.
 - Should be **idempotent**: running it multiple times refreshes configuration and service definitions without side effects.
 
@@ -139,7 +138,7 @@ Not currently implemented. See [Open Questions](#roadmap--open-questions).
 
 | Path | Purpose |
 |------|---------|
-| `config.yaml` | Local runner config & rootDir definition. |
+| `config.yaml` | Local runner definitions (Standalone mode only). |
 | `credentials.json` | Machine ID/token issued by Urso API (managed mode). |
 | `cache/actions-runner.tar.gz` & `cache/version.txt` | Cached GitHub runner archive and version metadata. |
 | `logs/com.urso-run.urso.log` | launchd stdout/stderr (defined in plist). |
@@ -149,8 +148,6 @@ Future work: make the home directory configurable via `--urso-home` and ensure e
 ### Sample `config.yaml`
 
 ```yaml
-rootDir: ".urso/runners"
-
 runners:
   - name: "default-runner"
     url: "https://github.com/my-org"
@@ -161,7 +158,7 @@ runners:
       - arm64
 ```
 
-*Relative `rootDir` paths are expanded against the user’s home directory.*
+*Configuration no longer includes `rootDir`; runners are always placed in `runners/` relative to the Urso home directory.*
 
 ### Validation Rules
 
@@ -176,16 +173,16 @@ runners:
 | Aspect | Local / Free Mode | Managed / Cloud Mode |
 |--------|-------------------|-------------------------|
 | Credentials | Not present | `credentials.json` populated via `install`. |
-| Runner Source | Only `config.yaml`. | Remote API runners merged into local `rootDir`. |
+| Runner Source | `config.yaml` (inside Urso Home). | Remote API runners (kept in memory). |
 | GitHub Tokens | CLI flags or env vars (`GITHUB_REGISTER_TOKEN`, `GITHUB_REMOVE_TOKEN`). | Fetched from Urso API per run (register/remove tokens). |
-| Typical Command | `urso run --config <path>` | `urso install` (once), then launchd invokes `urso run`. |
+| Typical Command | `urso run --urso-home <path>` | `urso install` (once), then launchd invokes `urso run`. |
 | Use Case | Personal/lab machines, no dashboard integration. | Production fleets managed centrally. |
 
-Implementation plan:
+Workflow logic:
 
 1. `urso run` checks for credentials via `CredentialStore`.
-2. If absent → skip API calls, require manual tokens.
-3. If present → load machine ID/token, fetch runner definitions and GitHub tokens, write merged config (keeping local `rootDir`), run sync.
+2. If absent → Local mode: Read `config.yaml`, require manual tokens, run sync.
+3. If present → Managed mode: Load machine ID/token, fetch runners and tokens from API, run sync.
 
 ---
 
@@ -227,20 +224,20 @@ Implementation plan:
 
 ### High-priority (from previous TODO + new analysis)
 
-1. **Dual-mode `run` implementation**
+1. **Dual-mode `run` implementation (Completed)**
    - Auto-detect credentials, fetch remote config/tokens when managed.
-   - Update unit tests (`cli_test.go`) to cover both branches.
+   - Handle missing `config.yaml` in managed mode by using defaults.
 
-2. **Idempotent `install` workflow**
+2. **Idempotent `install` workflow (Completed)**
    - Skip re-registration if credentials exist.
-   - Fail fast if `init` has not been executed.
    - Ensure launchd always runs `urso run`.
 
-3. **Urso Home abstraction**
-   - Add `--urso-home` flag.
+3. **Urso Home abstraction (Completed)**
+   - Add `--urso-home` flag and deprecate `--config`.
    - Centralize path derivation for config, credentials, cache, logs, and tests.
+   - Removed `rootDir` from configuration; it's now strictly relative to Urso Home.
 
-4. **Documentation refresh (this README)**
+4. **Documentation refresh (Completed)**
    - Keep this file as the single source of truth; deprecate `TODO.md` and `HANDOFF_SUMMARY.md`.
 
 5. **Better validation & error reporting**
