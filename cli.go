@@ -98,18 +98,12 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 	var cfg Config
 	if managed {
 		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, machineID, machineToken)
-		if err != nil {
-			return err
-		}
 	} else {
-		cfg, err = NewConfig(configPath)
-		if err != nil {
-			return fmt.Errorf("error loading config: %w", err)
-		}
+		cfg, registerToken, removeToken, err = c.loadLocalRunInputs(configPath, registerToken, removeToken)
+	}
 
-		if err := c.ensureLocalTokens(registerToken, removeToken); err != nil {
-			return err
-		}
+	if err != nil {
+		return err
 	}
 
 	if err := c.syncer.Sync(ctx, rootDir, cfg, registerToken, removeToken); err != nil {
@@ -176,6 +170,22 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 
 	fmt.Fprintln(c.errOut, "urso service uninstalled successfully")
 	return nil
+}
+
+func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, string, string, error) {
+	cfg, err := NewConfig(configPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Config{}, "", "", fmt.Errorf("config file not found at %s: please run 'urso init' first", configPath)
+		}
+		return Config{}, "", "", fmt.Errorf("error loading config: %w", err)
+	}
+
+	if err := c.ensureLocalTokens(registerToken, removeToken); err != nil {
+		return Config{}, "", "", err
+	}
+
+	return cfg, registerToken, removeToken, nil
 }
 
 func (c *CLI) detectManaged() (bool, string, string, error) {
