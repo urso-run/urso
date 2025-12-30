@@ -190,8 +190,8 @@ Workflow logic:
 - **Launchd plist** is generated at `~/Library/LaunchAgents/com.urso-run.urso.plist`.
 - Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects managed mode, no extra flags are needed once credentials exist.
 - Logging:
-  - Free/local mode (interactive CLI) writes to stdout/stderr only.
-  - Managed/launchd mode writes stdout/stderr to `~/Library/Logs/com.urso-run.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.urso-run.urso.log` or `log stream --predicate 'process == "urso"'`.
+  - Free/local mode (interactive CLI) writes structured logs to stdout and fatal errors to stderr.
+  - Managed/launchd mode captures both stdout and stderr into `~/Library/Logs/com.urso-run.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.urso-run.urso.log` or `log stream --predicate 'process == "urso"'`.
 - `install` currently runs:
   1. `launchctl bootout gui/<uid> <plist>` (best-effort).
   2. `launchctl bootstrap gui/<uid> <plist>`.
@@ -205,7 +205,7 @@ Workflow logic:
 
 - **Permissions:** Config, credentials, and cache directories should all be `0700`. Runner directories currently use `0755`; tighten to `0700` to avoid leaking GitHub runner secrets.
 - **Credential storage:** `credentials.json` is written with `0600`. Handle errors carefully and avoid printing secrets in logs.
-- **Logging:** Structured logging (`slog`) is configured to stderr; ensure sensitive data isn’t logged.
+- **Logging:** Structured logging (`slog`) is configured to stdout; ensure sensitive data isn’t logged.
 - **API retries:** `DashboardAPIClient` retries transient failures (5xx/timeouts) with exponential backoff and aborts on 4xx responses.
 
 ---
