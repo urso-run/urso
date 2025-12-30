@@ -28,16 +28,18 @@ type ServiceManager interface {
 }
 
 // ErrUnsupportedOS is returned when an operation is attempted on an unsupported operating system.
-var ErrUnsupportedOS = errors.New("unsupported operating system: only macOS (darwin) is supported")
+var ErrUnsupportedOS = errors.New("unsupported operating system: only macOS and Linux are supported")
 
 // NewServiceManager creates a new ServiceManager appropriate for the current OS.
-// It returns ErrUnsupportedOS if the OS is not macOS.
 func NewServiceManager(logger *slog.Logger) (ServiceManager, error) {
-	if runtime.GOOS != "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
+		return newLaunchdManager(logger), nil
+	case "linux":
+		return newSystemdManager(logger), nil
+	default:
 		return nil, ErrUnsupportedOS
 	}
-	manager := newLaunchdManager(logger)
-	return manager, nil
 }
 
 const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
@@ -61,6 +63,20 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <string>{{.HomeDir}}/Library/Logs/{{.ServiceName}}.log</string>
 </dict>
 </plist>
+`
+
+const systemdTemplate = `[Unit]
+Description=Urso Runner Manager
+After=network.target
+
+[Service]
+ExecStart={{.ExecutablePath}} run
+Restart=always
+StandardOutput=append:{{.HomeDir}}/.urso/logs/urso.log
+StandardError=append:{{.HomeDir}}/.urso/logs/urso.log
+
+[Install]
+WantedBy=default.target
 `
 
 // LaunchdManager implements the ServiceManager interface for macOS systems using launchd.
@@ -179,6 +195,125 @@ func (l *LaunchdManager) runLaunchctl(ctx context.Context, args ...string) error
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("launchctl command failed: %w, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// SystemdManager implements the ServiceManager interface for Linux systems using systemd.
+type SystemdManager struct {
+	logger *slog.Logger
+}
+
+func newSystemdManager(logger *slog.Logger) *SystemdManager {
+	return &SystemdManager{logger: logger}
+}
+
+// Install creates a systemd service file, reloads the daemon, and starts the service.
+func (s *SystemdManager) Install(ctx context.Context, executablePath string) error {
+	s.logger.Info("installing systemd user service")
+
+	servicePath, err := s.getServicePath()
+	if err != nil {
+		return err
+	}
+
+	if err := s.createServiceFile(executablePath, servicePath); err != nil {
+		return err
+	}
+
+	s.logger.Info("reloading systemd manager")
+	if err := s.runSystemctl(ctx, "daemon-reload"); err != nil {
+		return err
+	}
+
+	s.logger.Info("enabling and starting service", "service", ServiceName)
+	if err := s.runSystemctl(ctx, "enable", "--now", ServiceName); err != nil {
+		return err
+	}
+
+	s.logger.Info("systemd service installed successfully")
+	return nil
+}
+
+// Uninstall stops, disables, and removes the systemd service file.
+func (s *SystemdManager) Uninstall(ctx context.Context) error {
+	s.logger.Info("uninstalling systemd user service")
+
+	servicePath, err := s.getServicePath()
+	if err != nil {
+		return err
+	}
+
+	s.logger.Info("stopping and disabling service", "service", ServiceName)
+	if err := s.runSystemctl(ctx, "disable", "--now", ServiceName); err != nil {
+		s.logger.Warn("failed to disable service", "error", err)
+	}
+
+	s.logger.Info("removing systemd service file", "path", servicePath)
+	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove service file: %w", err)
+	}
+
+	if err := s.runSystemctl(ctx, "daemon-reload"); err != nil {
+		s.logger.Warn("failed to reload systemd daemon", "error", err)
+	}
+
+	s.logger.Info("systemd service uninstalled successfully")
+	return nil
+}
+
+func (s *SystemdManager) createServiceFile(executablePath, destPath string) error {
+	tmpl, err := template.New("systemd").Parse(systemdTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse systemd template: %w", err)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	data := struct {
+		ExecutablePath string
+		HomeDir        string
+	}{
+		ExecutablePath: executablePath,
+		HomeDir:        homeDir,
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("failed to create systemd directory: %w", err)
+	}
+
+	// Also ensure log directory exists
+	logDir := filepath.Join(homeDir, ".urso", "logs")
+	if err := os.MkdirAll(logDir, 0700); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	file, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create service file: %w", err)
+	}
+	defer file.Close()
+
+	return tmpl.Execute(file, data)
+}
+
+func (s *SystemdManager) getServicePath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("could not get user home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".config", "systemd", "user", ServiceName+".service"), nil
+}
+
+func (s *SystemdManager) runSystemctl(ctx context.Context, args ...string) error {
+	fullArgs := append([]string{"--user"}, args...)
+	cmd := exec.CommandContext(ctx, "systemctl", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl command failed: %w, output: %s", err, string(output))
 	}
 	return nil
 }

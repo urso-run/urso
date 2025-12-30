@@ -69,7 +69,7 @@ func (f *FileSystemMachine) MkdirAll(path string) error {
 
 func supported(os, arch string) bool {
 	switch strings.Join([]string{os, arch}, "/") {
-	case "darwin/arm64", "darwin/amd64":
+	case "darwin/arm64", "darwin/amd64", "linux/amd64", "linux/arm64":
 		return true
 	default:
 		return false

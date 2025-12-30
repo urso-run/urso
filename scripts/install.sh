@@ -19,16 +19,21 @@ main() {
 
   # 1. Platform Check
   os=$(uname -s)
-  if [ "$os" != "Darwin" ]; then
-    echo "Error: Urso is only supported on macOS (Darwin)."
-    exit 1
-  fi
+  case "$os" in
+    Darwin) os="Darwin" ;;
+    Linux)  os="Linux" ;;
+    *)
+      echo "Error: Urso is only supported on macOS (Darwin) and Linux."
+      exit 1
+      ;;
+  esac
 
   # 2. Architecture Check
   arch=$(uname -m)
   case "$arch" in
-    x86_64) arch="x86_64" ;;
-    arm64)  arch="arm64" ;;
+    x86_64)  arch="x86_64" ;;
+    arm64)   arch="arm64" ;;
+    aarch64) arch="arm64" ;;
     *)
       echo "Error: Unsupported architecture $arch. Urso supports x86_64 and arm64."
       exit 1
@@ -50,7 +55,7 @@ main() {
     echo "Latest version found: $latest_version"
 
     # 5. Construct Download URL
-    filename="urso_Darwin_${arch}.tar.gz"
+    filename="urso_${os}_${arch}.tar.gz"
     download_url="https://github.com/$repo/releases/download/$latest_version/$filename"
 
     # 6. Download and Extract

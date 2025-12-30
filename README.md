@@ -2,14 +2,14 @@
 
 [![codecov](https://codecov.io/gh/urso-run/urso/graph/badge.svg?token=HYC27GSMBM)](https://codecov.io/gh/urso-run/urso)
 
-# Urso – macOS GitHub Actions Runner Orchestrator
+# Urso – macOS & Linux GitHub Actions Runner Orchestrator
 
 Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners on macOS hosts. It can operate in two modes:
 
 1. **Local / Free Mode** – Operates standalone. You provide a `config.yaml` plus GitHub registration/removal tokens and Urso reconciles runners accordingly.
 2. **Managed / Cloud Mode** – The machine is registered with `https://urso.run`, credentials are cached locally, and Urso pulls runner definitions and tokens from the API. Configuration is kept in memory and does not require or modify `config.yaml`.
 
-> **Platform scope:** macOS (darwin) is the only supported operating system. All tooling, release artifacts, and service management are optimized for launchd. Linux/Windows support is explicitly out of scope.
+> **Platform scope:** macOS (darwin) and Linux are supported operating systems. All tooling, release artifacts, and service management are optimized for launchd (macOS) and systemd (Linux).
 
 ---
 
@@ -50,11 +50,12 @@ Urso is a hardened CLI for provisioning and maintaining GitHub Actions runners o
 | `urso.DashboardAPIClient` | Talks to `https://urso.run` with retry/backoff, fetching runner config and GitHub tokens. |
 | `urso.FileSystemCredentialStore` | Persists machine ID/token returned by the Urso API. |
 | `urso.GithubAPIDownloader` | Maintains a cached GitHub Actions runner archive in the Urso home directory. |
-| `urso.LaunchdManager` | Generates a plist and uses `launchctl bootstrap/bootout` to manage the background agent. |
+| `urso.LaunchdManager` | Generates a plist and uses `launchctl bootstrap/bootout` to manage the background agent (macOS). |
+| `urso.SystemdManager` | Generates a service file and uses `systemctl --user` to manage the background agent (Linux). |
 
 Key design decisions:
 
-- **macOS only:** Non-darwin builds should fail fast; service management is launchd-specific.
+- **Platform Specifics:** Service management is launchd-specific on macOS and systemd-specific on Linux.
 - **Single source of truth for paths:** The “Urso Home” (`~/.urso` by default) stores configs, credentials, logs, and cache.
 - **Urso Home as trust boundary:** The `--urso-home` flag (defaulting to `~/.urso`) defines where all runners, logs, and cache are stored. Standalone configuration is relative to this root.
 - **Error aggregation:** Runner creation/removal errors are joined so operators see every issue after a reconciliation pass.
@@ -142,7 +143,8 @@ source ~/.zshrc
 | `config.yaml` | Local runner definitions (Standalone mode only). |
 | `credentials.json` | Machine ID/token issued by Urso API (managed mode). |
 | `cache/actions-runner.tar.gz` & `cache/version.txt` | Cached GitHub runner archive and version metadata. |
-| `logs/com.urso-run.urso.log` | launchd stdout/stderr (defined in plist). |
+| `logs/com.urso-run.urso.log` | launchd stdout/stderr (macOS). |
+| `logs/urso.log` | systemd stdout/stderr (Linux). |
 
 ### Sample `config.yaml`
 
@@ -187,11 +189,15 @@ Workflow logic:
 
 ## Service Management
 
-- **Launchd plist** is generated at `~/Library/LaunchAgents/com.urso-run.urso.plist`.
-- Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects managed mode, no extra flags are needed once credentials exist.
+- **macOS:** A **launchd plist** is generated at `~/Library/LaunchAgents/com.urso-run.urso.plist`.
+- **Linux:** A **systemd service** is generated at `~/.config/systemd/user/com.urso-run.urso.service`.
+- Program arguments are set to `["/path/to/urso", "run"]`. Because `run` auto-detects managed mode, no extra flags are needed once credentials exist.
 - Logging:
   - Free/local mode (interactive CLI) writes structured logs to stdout and fatal errors to stderr.
-  - Managed/launchd mode captures both stdout and stderr into `~/Library/Logs/com.urso-run.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.urso-run.urso.log` or `log stream --predicate 'process == "urso"'`.
+  - Managed mode captures both stdout and stderr into a log file:
+    - macOS: `~/Library/Logs/com.urso-run.urso.log`
+    - Linux: `~/.urso/logs/urso.log`
+  - Tail with `tail -f` or use OS-specific tools like `log stream` (macOS) or `journalctl --user -u com.urso-run.urso -f` (Linux).
 - `install` currently runs:
   1. `launchctl bootout gui/<uid> <plist>` (best-effort).
   2. `launchctl bootstrap gui/<uid> <plist>`.
@@ -205,7 +211,7 @@ Workflow logic:
 
 - **Permissions:** Config, credentials, and cache directories should all be `0700`. Runner directories currently use `0755`; tighten to `0700` to avoid leaking GitHub runner secrets.
 - **Credential storage:** `credentials.json` is written with `0600`. Handle errors carefully and avoid printing secrets in logs.
-- **Logging:** Structured logging (`slog`) is configured to stdout; ensure sensitive data isn’t logged.
+- **Logging:** Structured logging (`slog`) is configured to stdout; ensure sensitive data isn’t logged. Logs are redirected to files by the service manager in managed mode.
 - **API retries:** `DashboardAPIClient` retries transient failures (5xx/timeouts) with exponential backoff and aborts on 4xx responses.
 
 ---
