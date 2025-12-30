@@ -2,13 +2,20 @@
 set -e
 
 # Urso Installation Script
-# This script downloads and installs the latest version of Urso for macOS into the user's home directory.
+# This script downloads and installs the latest version of Urso for macOS and Linux into the user's home directory.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/urso-run/urso/main/scripts/install.sh | sh
 #   curl -sSL https://raw.githubusercontent.com/urso-run/urso/main/scripts/install.sh | sh -s -- <token>
 
 main() {
+  # Check if running as root
+  if [ "$(id -u)" -eq 0 ]; then
+    echo "Warning: Running as root is not recommended."
+    echo "Urso is designed to be installed and run as a non-root user."
+    echo ""
+  fi
+
   token="$1"
   repo="urso-run/urso"
 
