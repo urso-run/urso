@@ -38,9 +38,10 @@ func newRootCmd() *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:     "urso",
-		Short:   "Urso is a GitHub Actions runner manager",
-		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+		Use:           "urso",
+		Short:         "Urso is a GitHub Actions runner manager",
+		Version:       fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+		SilenceErrors: true,
 	}
 
 	// Persistent flags available to all subcommands
@@ -52,7 +53,9 @@ func newRootCmd() *cobra.Command {
 	in := os.Stdin
 
 	// Dependencies
-	logger := slog.New(slog.NewTextHandler(errOut, nil))
+	// Info logs go to stdout; errors returned by commands are printed to stderr in main().
+	// When running under launchd, both are captured into the same log file.
+	logger := slog.New(slog.NewTextHandler(out, nil))
 
 	store := urso.NewFileSystemConfigStore(ursoHome)
 	httpClient := urso.NewHTTPClient()
@@ -79,7 +82,8 @@ func newRootCmd() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create a default config.yaml for runners",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
 			return cli.Init()
 		},
 	}
@@ -89,6 +93,7 @@ func newRootCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Run the sync to create/remove runners based on config.yaml",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
 			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
 			defer cancel()
 
@@ -106,6 +111,7 @@ func newRootCmd() *cobra.Command {
 		Use:   "install",
 		Short: "Install urso as a service (managed/cloud only)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
 			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
 			defer cancel()
 
@@ -119,6 +125,7 @@ func newRootCmd() *cobra.Command {
 		Use:   "uninstall",
 		Short: "Uninstall urso service",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
 			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
 			defer cancel()
 
