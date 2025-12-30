@@ -1,4 +1,4 @@
-module github.com/repeat-dev/urso
+module github.com/urso-run/urso
 
 go 1.25.5
 

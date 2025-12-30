@@ -3,6 +3,7 @@ package urso
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -427,4 +428,33 @@ func assertInstallStepsExecuted(t *testing.T, h installTestHarness) {
 	if !h.sm.installCalled {
 		t.Error("ServiceManager.Install was not called")
 	}
+}
+
+func TestCLI_Uninstall(t *testing.T) {
+	t.Run("happy path calls service manager uninstall", func(t *testing.T) {
+		h := newInstallTestHarness(t)
+
+		err := h.cli.Uninstall(context.TODO())
+
+		if err != nil {
+			t.Fatalf("Uninstall() returned an unexpected error: %v", err)
+		}
+		if !h.sm.uninstallCalled {
+			t.Error("expected ServiceManager.Uninstall to be called")
+		}
+	})
+
+	t.Run("returns error if service manager is nil", func(t *testing.T) {
+		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+		logger := slog.New(slog.DiscardHandler)
+		cli := NewCLI(in, out, errOut, nil, nil, nil, nil, nil, logger)
+
+		err := cli.Uninstall(context.TODO())
+		if err == nil {
+			t.Fatal("expected an error but got nil")
+		}
+		if !errors.Is(err, ErrUnsupportedOS) {
+			t.Errorf("expected ErrUnsupportedOS, got %v", err)
+		}
+	})
 }

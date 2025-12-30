@@ -142,7 +142,7 @@ Not currently implemented. See [Open Questions](#roadmap--open-questions).
 | `config.yaml` | Local runner config & rootDir definition. |
 | `credentials.json` | Machine ID/token issued by Urso API (managed mode). |
 | `cache/actions-runner.tar.gz` & `cache/version.txt` | Cached GitHub runner archive and version metadata. |
-| `logs/com.repeat.urso.log` | launchd stdout/stderr (defined in plist). |
+| `logs/com.urso-run.urso.log` | launchd stdout/stderr (defined in plist). |
 
 Future work: make the home directory configurable via `--urso-home` and ensure every component respects it.
 
@@ -191,11 +191,11 @@ Implementation plan:
 
 ## Service Management
 
-- **Launchd plist** is generated at `~/Library/LaunchAgents/com.repeat.urso.plist`.
+- **Launchd plist** is generated at `~/Library/LaunchAgents/com.urso-run.urso.plist`.
 - Program arguments should be updated to `["/path/to/urso", "run"]`. Because `run` auto-detects managed mode, no extra flags are needed once credentials exist.
 - Logging:
   - Free/local mode (interactive CLI) writes to stdout/stderr only.
-  - Managed/launchd mode writes stdout/stderr to `~/Library/Logs/com.repeat.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.repeat.urso.log` or `log stream --predicate 'process == "urso"'`.
+  - Managed/launchd mode writes stdout/stderr to `~/Library/Logs/com.urso-run.urso.log` (per the plist). Tail with `tail -f ~/Library/Logs/com.urso-run.urso.log` or `log stream --predicate 'process == "urso"'`.
 - `install` currently runs:
   1. `launchctl bootout gui/<uid> <plist>` (best-effort).
   2. `launchctl bootstrap gui/<uid> <plist>`.

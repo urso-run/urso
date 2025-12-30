@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/repeat-dev/urso"
+	"github.com/urso-run/urso"
 )
 
 // These variables are set at build time via ldflags.
@@ -121,7 +121,19 @@ func newRootCmd() *cobra.Command {
 	}
 	installCmd.Flags().StringVar(&installToken, "urso-registration-token", "", "urso registration token")
 
-	rootCmd.AddCommand(initCmd, runCmd, installCmd)
+	// Command: uninstall
+	uninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Uninstall urso service",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), commandTimeout)
+			defer cancel()
+
+			return cli.Uninstall(ctx)
+		},
+	}
+
+	rootCmd.AddCommand(initCmd, runCmd, installCmd, uninstallCmd)
 
 	return rootCmd
 }

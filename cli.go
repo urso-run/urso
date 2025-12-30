@@ -162,7 +162,23 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	if err := c.sm.Install(ctx, executablePath); err != nil {
 		return err
 	}
-	fmt.Fprintln(c.errOut, "launchd logs: ~/Library/Logs/com.repeat.urso.log")
+	fmt.Fprintln(c.errOut, "launchd logs: ~/Library/Logs/com.urso-run.urso.log")
+	return nil
+}
+
+// Uninstall handles the logic for the 'uninstall' command.
+func (c *CLI) Uninstall(ctx context.Context) error {
+	c.logger.Info("starting urso service uninstallation")
+
+	if c.sm == nil {
+		return ErrUnsupportedOS
+	}
+
+	if err := c.sm.Uninstall(ctx); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(c.errOut, "urso service uninstalled successfully")
 	return nil
 }
 

@@ -14,7 +14,7 @@ import (
 
 const (
 	// ServiceName is the default name for the system service.
-	ServiceName = "com.repeat.urso"
+	ServiceName = "com.urso-run.urso"
 )
 
 // ServiceManager defines the interface for managing the `urso` system service.

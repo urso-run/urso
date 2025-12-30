@@ -162,7 +162,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/repeat-dev/urso)
+        - prefix(github.com/urso-run/urso)
       custom-order: true
   exclusions:
     generated: lax

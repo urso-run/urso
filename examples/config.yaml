@@ -3,10 +3,10 @@ rootDir: urso-run
 runners:
   - name: first
     group: Default
-    url: https://github.com/repeat-dev
-    labels: ["repeat-dev"]
+    url: https://github.com/urso-run
+    labels: ["urso-run"]
 
   - name: second
     group: Default
-    url: https://github.com/repeat-dev
-    labels: ["repeat-dev"]
+    url: https://github.com/urso-run
+    labels: ["urso-run"]
