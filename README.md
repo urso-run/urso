@@ -63,22 +63,40 @@ Key design decisions:
 
 ## Installation & Quick Start
 
+The easiest way to install Urso on macOS is via the installation script:
+
 ```bash
-# 1. Build or download a release (macOS only)
+# For Licensed / Managed Mode
+curl -sSL https://raw.githubusercontent.com/urso-run/urso/main/scripts/install.sh | sh -s -- <YOUR_REGISTRATION_TOKEN>
+
+# For Local / Free Mode
+curl -sSL https://raw.githubusercontent.com/urso-run/urso/main/scripts/install.sh | sh
+```
+
+### Manual Quick Start
+
+If you prefer manual installation or want to run from source:
+
+```bash
+# 1. Build from source (macOS only)
 make build
 
 # 2. Initialize local state (~/.urso/config.yaml)
-urso init
+./urso init
+
+# 3. Choose your mode:
 
 # 3a. Local mode: provide GitHub tokens manually
 export GITHUB_REGISTER_TOKEN=...
 export GITHUB_REMOVE_TOKEN=...
-urso run
+~/.urso/bin/urso run
 
-# 3b. Licensed mode: install (idempotent)
-urso install --urso-registration-token <org JWT>
+# 3b. Licensed mode: install as a service (idempotent)
+~/.urso/bin/urso install --urso-registration-token <YOUR_REGISTRATION_TOKEN>
 
-# 4. Once installed, the launchd service will invoke `urso run`
+# 4. (Optional) Add Urso to your PATH
+echo 'export PATH="$HOME/.urso/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ---
