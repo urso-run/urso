@@ -42,7 +42,7 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    wrap_in_directory: true
+    wrap_in_directory: false
     builds_info:
       mtime: "{{ .CommitTimestamp }}"
     files:
