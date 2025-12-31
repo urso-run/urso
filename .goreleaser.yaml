@@ -79,7 +79,7 @@ notarize:
         issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
         key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
         key: "{{ .Env.MACOS_NOTARY_KEY }}"
-        wait: true
+        wait: false # Don't wait for it, notarization takes long and pipeline will exceed context deadline
 
 homebrew_casks:
   - name: urso
