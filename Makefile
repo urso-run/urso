@@ -25,6 +25,10 @@ LDFLAGS = -ldflags="-s -w \
 help: ## Display this help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
+.PHONY: completions
+completions: ## Generate shell completions
+	@sh ./scripts/completions.sh
+
 .PHONY: build
 build: ## Build the binary
 	@mkdir -p $(BIN_DIR)
@@ -49,6 +53,7 @@ install: build ## Install the binary and zsh completions
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
+	rm -rf completions
 	rm -f coverage.out coverage.html
 
 .PHONY: test
@@ -79,4 +84,4 @@ lint: ## Run golangci-lint
 	golangci-lint run --fix
 
 .PHONY: all
-all: tidy fmt vet test build install ## Run tidy, fmt, vet, test, build and install
+all: tidy fmt vet test completions build install ## Run tidy, fmt, vet, test, completions, build and install

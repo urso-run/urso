@@ -13,6 +13,7 @@ gomod:
 before:
   hooks:
     - go mod tidy
+    - sh ./scripts/completions.sh
 
 builds:
   - env:
@@ -44,6 +45,8 @@ archives:
     wrap_in_directory: true
     builds_info:
       mtime: "{{ .CommitTimestamp }}"
+    files:
+      - completions/*
 
 sboms:
   - artifacts: archive
@@ -63,6 +66,22 @@ signs:
       - "--yes"
     artifacts: checksum
     output: true
+
+homebrew_casks:
+  - name: urso
+    repository:
+      owner: urso-run
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_RELEASER_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://urso.run"
+    description: "Urso is a GitHub Actions runner manager"
+    binaries:
+      - urso
+    completions:
+      bash: completions/urso.bash
+      zsh: completions/urso.zsh
+      fish: completions/urso.fish
 
 changelog:
   sort: asc
