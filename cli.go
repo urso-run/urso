@@ -166,6 +166,7 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 }
 
 // Uninstall handles the logic for the 'uninstall' command.
+// This command is intended for managed mode, cleaning up the service and runners.
 func (c *CLI) Uninstall(ctx context.Context) error {
 	c.logger.Info("starting urso service uninstallation")
 
@@ -173,8 +174,28 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 		return ErrUnsupportedOS
 	}
 
+	// 1. Remove the system service (launchd/systemd)
 	if err := c.sm.Uninstall(ctx); err != nil {
 		return err
+	}
+
+	// 2. Perform a final sync with an empty config to remove all existing runners.
+	// This ensures runners are unregistered if tokens are available via API.
+	hostname, _ := os.Hostname()
+	managed, machineID, machineToken, err := c.detectManaged()
+	removeToken := ""
+	if err == nil && managed {
+		c.logger.Info("fetching remove token from API for cleanup")
+		if tok, err := c.api.GetRemoveToken(ctx, hostname, machineID, machineToken); err == nil {
+			removeToken = tok
+		}
+	}
+
+	c.logger.Info("performing final cleanup to remove all runners")
+	emptyCfg := Config{Runners: []RunnerConfig{}}
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), emptyCfg, "", removeToken); err != nil {
+		c.logger.Error("failed to remove runners during uninstall", "error", err)
+		fmt.Fprintf(c.errOut, "Warning: failed to remove some runners: %v\n", err)
 	}
 
 	fmt.Fprintln(c.errOut, "urso service uninstalled successfully")

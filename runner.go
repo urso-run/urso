@@ -82,7 +82,7 @@ func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runner
 	}
 	s.logger.Info("runners to remove", "runners", runnersToRemove)
 	if removeToken == "" {
-		return errors.New("error removing runners: github-remove-token not found")
+		s.logger.Warn("github-remove-token not found; proceeding with local-only runner removal")
 	}
 	var errs []error
 	for name := range runnersToRemove {
@@ -153,9 +153,17 @@ func (s *RunnerSyncer) removeRunner(ctx context.Context, rootDir string, name st
 	if err := s.executor.UninstallService(ctx, runnerDir); err != nil {
 		s.logger.Warn("failed to uninstall runner service", "runner", name, "error", err)
 	}
-	if err := s.executor.Unconfigure(ctx, runnerDir, token); err != nil {
-		s.logger.Warn("failed to unconfigure runner", "runner", name, "error", err)
+
+	// We only attempt to unconfigure via GitHub if we actually have a token.
+	// Otherwise, we skip straight to deleting the local directory.
+	if token != "" {
+		if err := s.executor.Unconfigure(ctx, runnerDir, token); err != nil {
+			s.logger.Warn("failed to unconfigure runner from GitHub", "runner", name, "error", err)
+		}
+	} else {
+		s.logger.Info("skipping GitHub unconfiguration (no token)", "runner", name)
 	}
+
 	if err := s.machine.RemoveAll(runnerDir); err != nil {
 		return fmt.Errorf("remove runner dir: %w", err)
 	}

@@ -418,8 +418,11 @@ func assertInstallStepsExecuted(t *testing.T, h installTestHarness) {
 }
 
 func TestCLI_Uninstall(t *testing.T) {
-	t.Run("happy path calls service manager uninstall", func(t *testing.T) {
+	t.Run("happy path calls service manager uninstall and sync cleanup", func(t *testing.T) {
 		h := newInstallTestHarness(t)
+		h.creds.loadID = "mid"
+		h.creds.loadToken = "mtok"
+		h.api.removeToken = "cleanup-token"
 
 		err := h.cli.Uninstall(context.TODO())
 
@@ -428,6 +431,15 @@ func TestCLI_Uninstall(t *testing.T) {
 		}
 		if !h.sm.uninstallCalled {
 			t.Error("expected ServiceManager.Uninstall to be called")
+		}
+		if !h.syncer.syncCalled {
+			t.Error("expected Sync to be called for cleanup")
+		}
+		if len(h.syncer.syncCfg.Runners) != 0 {
+			t.Error("expected Sync to be called with 0 runners")
+		}
+		if h.syncer.syncRemoveToken != "cleanup-token" {
+			t.Errorf("expected Sync to use remove token from API, got %q", h.syncer.syncRemoveToken)
 		}
 	})
 
