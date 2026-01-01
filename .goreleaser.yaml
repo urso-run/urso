@@ -50,6 +50,8 @@ archives:
 
 sboms:
   - artifacts: archive
+  - id: packages
+    artifacts: linux-package
   - id: source
     artifacts: source
 
@@ -80,6 +82,48 @@ notarize:
         key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
         key: "{{ .Env.MACOS_NOTARY_KEY }}"
         wait: false # Don't wait for it, notarization takes long and pipeline will exceed context deadline
+
+nfpms:
+  - file_name_template: "{{ .ConventionalFileName }}"
+    id: packages
+    homepage: "https://urso.run"
+    description: "Urso is a GitHub Actions runner manager"
+    maintainer: "Petr Vala <petr.m.vala@gmail.com>"
+    license: "PolyForm Noncommercial License 1.0.0"
+    vendor: "urso.run"
+    bindir: /usr/bin
+    section: utils
+    mtime: "{{ .CommitTimestamp }}"
+    contents:
+      - src: completions/urso.bash
+        dst: /usr/share/bash-completion/completions/urso
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitTimestamp }}"
+      - src: completions/urso.fish
+        dst: /usr/share/fish/vendor_completions.d/urso.fish
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitTimestamp }}"
+      - src: completions/urso.zsh
+        dst: /usr/share/zsh/vendor-completions/_urso
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitTimestamp }}"
+      - src: LICENSE
+        dst: /usr/share/doc/urso/copyright
+        file_info:
+          mode: 0644
+          mtime: "{{ .CommitTimestamp }}"
+    formats:
+      - apk
+      - deb
+      - rpm
+      - archlinux
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
 
 homebrew_casks:
   - name: urso
