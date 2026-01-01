@@ -2,8 +2,11 @@ package urso
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -49,7 +52,9 @@ func (l *LiveRunnerExecutor) Configure(ctx context.Context, dir string, cfg Runn
 	if len(cfg.Labels) > 0 {
 		args = append(args, "--labels", strings.Join(cfg.Labels, ","))
 	}
+
 	cmd := exec.CommandContext(ctx, "./config.sh", args...)
+	l.prepareConfigCmd(cmd)
 	cmd.Dir = dir
 	cmd.Stdout = l.out
 	cmd.Stderr = l.out
@@ -57,33 +62,47 @@ func (l *LiveRunnerExecutor) Configure(ctx context.Context, dir string, cfg Runn
 }
 
 func (l *LiveRunnerExecutor) InstallService(ctx context.Context, dir string) error {
-	cmd := exec.CommandContext(ctx, "./svc.sh", "install")
-	cmd.Dir = dir
-	cmd.Stdout = l.out
-	cmd.Stderr = l.out
-	return cmd.Run()
+	return l.runSvc(ctx, dir, "install")
 }
 
 func (l *LiveRunnerExecutor) StartService(ctx context.Context, dir string) error {
-	cmd := exec.CommandContext(ctx, "./svc.sh", "start")
-	cmd.Dir = dir
-	cmd.Stdout = l.out
-	cmd.Stderr = l.out
-	return cmd.Run()
+	return l.runSvc(ctx, dir, "start")
 }
 
 func (l *LiveRunnerExecutor) UninstallService(ctx context.Context, dir string) error {
-	cmd := exec.CommandContext(ctx, "./svc.sh", "uninstall")
-	cmd.Dir = dir
-	cmd.Stdout = l.out
-	cmd.Stderr = l.out
-	return cmd.Run()
+	return l.runSvc(ctx, dir, "uninstall")
 }
 
 func (l *LiveRunnerExecutor) Unconfigure(ctx context.Context, dir string, token string) error {
 	cmd := exec.CommandContext(ctx, "./config.sh", "remove", "--token", token)
+	l.prepareConfigCmd(cmd)
 	cmd.Dir = dir
 	cmd.Stdout = l.out
 	cmd.Stderr = l.out
 	return cmd.Run()
+}
+
+func (l *LiveRunnerExecutor) prepareConfigCmd(cmd *exec.Cmd) {
+	// GitHub Actions config.sh fails if run as root unless RUNNER_ALLOW_RUNASROOT is set.
+	if os.Geteuid() == 0 {
+		cmd.Env = append(os.Environ(), "RUNNER_ALLOW_RUNASROOT=1")
+	}
+}
+
+func (l *LiveRunnerExecutor) runSvc(ctx context.Context, dir string, action string) error {
+	var cmd *exec.Cmd
+	// svc.sh MUST run as root on Linux.
+	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
+		cmd = exec.CommandContext(ctx, "sudo", "./svc.sh", action)
+	} else {
+		cmd = exec.CommandContext(ctx, "./svc.sh", action)
+	}
+
+	cmd.Dir = dir
+	cmd.Stdout = l.out
+	cmd.Stderr = l.out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("svc.sh %s failed: %w", action, err)
+	}
+	return nil
 }
