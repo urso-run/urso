@@ -120,6 +120,10 @@ func assertCreatesRunner(t *testing.T, h testHarness, err error) {
 	if !h.downloader.GetRunnerArchiveWasCalled {
 		t.Error("expected GetRunnerArchive to be called, but it wasn't")
 	}
+	expectedCacheDir := "/test/urso/.cache"
+	if h.downloader.GetRunnerArchiveDstDir != expectedCacheDir {
+		t.Errorf("got cache dir %q, want %q", h.downloader.GetRunnerArchiveDstDir, expectedCacheDir)
+	}
 	if !h.executor.ConfigureWasCalled {
 		t.Error("expected Configure to be called, but it wasn't")
 	}
@@ -154,7 +158,7 @@ func assertRemovesRunner(t *testing.T, h testHarness, err error) {
 	if !h.executor.UnconfigureWasCalled {
 		t.Error("expected Unconfigure to be called, but it wasn't")
 	}
-	expectedRunnerDir := "/test/runners/old-runner"
+	expectedRunnerDir := "/test/urso/runners/old-runner"
 	if h.executor.UnconfigureDir != expectedRunnerDir {
 		t.Errorf("got removal dir %q, want %q", h.executor.UnconfigureDir, expectedRunnerDir)
 	}
@@ -190,7 +194,7 @@ func assertCreatesAndRemoves(t *testing.T, h testHarness, err error) {
 	if !h.executor.UnconfigureWasCalled {
 		t.Error("expected Unconfigure to be called for old runner")
 	}
-	expectedOldRunnerDir := "/test/runners/old-runner"
+	expectedOldRunnerDir := "/test/urso/runners/old-runner"
 	if h.executor.UnconfigureDir != expectedOldRunnerDir {
 		t.Errorf("got removal dir %q, want %q", h.executor.UnconfigureDir, expectedOldRunnerDir)
 	}
@@ -282,7 +286,7 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 				removeToken = tc.removeToken
 			}
 
-			err := h.syncer.Sync(context.TODO(), "/test/runners", tc.config, registerToken, removeToken)
+			err := h.syncer.Sync(context.TODO(), "/test/urso", tc.config, registerToken, removeToken)
 
 			if tc.assert != nil {
 				tc.assert(t, h, err)

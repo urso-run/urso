@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -99,8 +98,6 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 		return err
 	}
 
-	rootDir := filepath.Join(c.store.UrsoHome(), "runners")
-
 	var cfg Config
 	if managed {
 		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, hostname, machineID, machineToken)
@@ -112,7 +109,7 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 		return err
 	}
 
-	if err := c.syncer.Sync(ctx, rootDir, cfg, registerToken, removeToken); err != nil {
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, registerToken, removeToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 	return nil
@@ -247,8 +244,6 @@ func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
 }
 
 func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string) error {
-	rootDir := filepath.Join(c.store.UrsoHome(), "runners")
-
 	// Fetch the runner config from the API
 	c.logger.Info("fetching runner config from urso api")
 	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, id, token)
@@ -273,7 +268,7 @@ func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string
 
 	// Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, rootDir, cfg, ghRegisterToken, ghRemoveToken); err != nil {
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, ghRegisterToken, ghRemoveToken); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
 	}
 

@@ -47,15 +47,15 @@ func (s *SpyConfigStore) UrsoHome() string {
 
 type SpySyncer struct {
 	syncCalled        bool
-	syncRootDir       string
+	syncUrsoHome      string
 	syncCfg           Config
 	syncRegisterToken string
 	syncRemoveToken   string
 }
 
-func (s *SpySyncer) Sync(_ context.Context, rootDir string, cfg Config, registerToken, removeToken string) error {
+func (s *SpySyncer) Sync(_ context.Context, ursoHome string, cfg Config, registerToken, removeToken string) error {
 	s.syncCalled = true
-	s.syncRootDir = rootDir
+	s.syncUrsoHome = ursoHome
 	s.syncCfg = cfg
 	s.syncRegisterToken = registerToken
 	s.syncRemoveToken = removeToken
@@ -232,6 +232,9 @@ func TestCLI_Run_LocalSuccess(t *testing.T) {
 	if spySyncer.syncRemoveToken != "rem-token" {
 		t.Errorf("expected remove token to be forwarded, got %s", spySyncer.syncRemoveToken)
 	}
+	if spySyncer.syncUrsoHome != tmpDir {
+		t.Errorf("expected ursoHome to be %s, got %s", tmpDir, spySyncer.syncUrsoHome)
+	}
 }
 
 func TestCLI_Run_LocalRequiresTokens(t *testing.T) {
@@ -286,9 +289,8 @@ func TestCLI_Run_ManagedFetchesFromAPI(t *testing.T) {
 	if !spySyncer.syncCalled {
 		t.Fatal("expected Sync to be called")
 	}
-	expectedRootDir := filepath.Join(tmpDir, "runners")
-	if spySyncer.syncRootDir != expectedRootDir {
-		t.Fatalf("expected root dir %s, got %s", expectedRootDir, spySyncer.syncRootDir)
+	if spySyncer.syncUrsoHome != tmpDir {
+		t.Fatalf("expected ursoHome %s, got %s", tmpDir, spySyncer.syncUrsoHome)
 	}
 	if len(spySyncer.syncCfg.Runners) != 1 || spySyncer.syncCfg.Runners[0].Name != "api-runner" {
 		t.Fatalf("expected runners from API to be used, got %+v", spySyncer.syncCfg.Runners)

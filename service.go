@@ -57,6 +57,8 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
     <key>StandardOutPath</key>
     <string>{{.HomeDir}}/Library/Logs/{{.ServiceName}}.log</string>
     <key>StandardErrorPath</key>
@@ -66,12 +68,13 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 const systemdTemplate = `[Unit]
-Description=Urso Runner Manager
+Description=Urso-run
 After=network.target
 
 [Service]
 ExecStart={{.ExecutablePath}} run
 Restart=always
+RestartSec=60
 StandardOutput=append:{{.HomeDir}}/.urso/logs/urso.log
 StandardError=append:{{.HomeDir}}/.urso/logs/urso.log
 

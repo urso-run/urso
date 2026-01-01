@@ -40,16 +40,8 @@ func NewGithubAPIDownloader(client *http.Client, logger *slog.Logger) *GithubAPI
 }
 
 func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, dstDir string) (string, error) {
-	cacheDir := dstDir
-	if cacheDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("could not get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(home, ".urso", "cache")
-	}
-	if err := os.MkdirAll(cacheDir, 0700); err != nil {
-		return "", fmt.Errorf("failed to create cache directory %s: %w", cacheDir, err)
+	if err := os.MkdirAll(dstDir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create cache directory %s: %w", dstDir, err)
 	}
 
 	release, err := g.fetchLatestRelease(ctx)
@@ -57,8 +49,8 @@ func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, dstDir strin
 		return "", err
 	}
 
-	archivePath := filepath.Join(cacheDir, archiveFilename)
-	versionPath := filepath.Join(cacheDir, "version.txt")
+	archivePath := filepath.Join(dstDir, archiveFilename)
+	versionPath := filepath.Join(dstDir, "version.txt")
 
 	cachedVersion, _ := os.ReadFile(versionPath)
 	if string(cachedVersion) == release.TagName {
@@ -68,7 +60,7 @@ func (g *GithubAPIDownloader) GetRunnerArchive(ctx context.Context, dstDir strin
 		}
 	}
 
-	g.logger.Info("downloading new runner archive", "version", release.TagName, "cache_dir", cacheDir)
+	g.logger.Info("downloading new runner archive", "version", release.TagName, "cache_dir", dstDir)
 	downloadURL, err := g.getDownloadURL(release)
 	if err != nil {
 		return "", err
