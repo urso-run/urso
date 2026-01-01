@@ -93,28 +93,28 @@ nfpms:
     vendor: "urso.run"
     bindir: /usr/bin
     section: utils
-    mtime: "{{ .CommitTimestamp }}"
+    mtime: "{{ .CommitDate }}"
     contents:
       - src: completions/urso.bash
         dst: /usr/share/bash-completion/completions/urso
         file_info:
           mode: 0644
-          mtime: "{{ .CommitTimestamp }}"
+          mtime: "{{ .CommitDate }}"
       - src: completions/urso.fish
         dst: /usr/share/fish/vendor_completions.d/urso.fish
         file_info:
           mode: 0644
-          mtime: "{{ .CommitTimestamp }}"
+          mtime: "{{ .CommitDate }}"
       - src: completions/urso.zsh
         dst: /usr/share/zsh/vendor-completions/_urso
         file_info:
           mode: 0644
-          mtime: "{{ .CommitTimestamp }}"
+          mtime: "{{ .CommitDate }}"
       - src: LICENSE
         dst: /usr/share/doc/urso/copyright
         file_info:
           mode: 0644
-          mtime: "{{ .CommitTimestamp }}"
+          mtime: "{{ .CommitDate }}"
     formats:
       - apk
       - deb
