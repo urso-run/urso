@@ -51,7 +51,7 @@ archives:
 sboms:
   - artifacts: archive
   - id: packages
-    artifacts: linux-package
+    artifacts: package
   - id: source
     artifacts: source
 
