@@ -103,7 +103,7 @@ func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) 
 	s.registerMachineHostname = hostname
 	return s.machineID, s.machineToken, nil
 }
-func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]RunnerConfig, error) {
+func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _, _ string) ([]RunnerConfig, error) {
 	s.getRunnerConfigCalled = true
 	if s.getRunnerConfigErr != nil {
 		return nil, s.getRunnerConfigErr
@@ -113,7 +113,7 @@ func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _ string) ([]Runner
 	}
 	return []RunnerConfig{{Name: "api-runner", URL: "http://example.com"}}, nil
 }
-func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string, error) {
+func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
 	if s.getRegisterTokenErr != nil {
 		return "", s.getRegisterTokenErr
@@ -123,7 +123,7 @@ func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _ string) (string,
 	}
 	return "api-gh-reg-token", nil
 }
-func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _ string) (string, error) {
+func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _, _ string) (string, error) {
 	s.getRemoveTokenCalled = true
 	if s.getRemoveTokenErr != nil {
 		return "", s.getRemoveTokenErr

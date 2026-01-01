@@ -30,12 +30,9 @@ func TestDashboardAPIClient_RegisterMachine(t *testing.T) {
 					t.Errorf("incorrect auth header: %s", authHeader)
 				}
 
-				var req registerMachineRequest
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					t.Errorf("failed to decode request body: %v", err)
-				}
-				if req.Hostname != "test-hostname" {
-					t.Errorf("expected hostname %q, got %q", "test-hostname", req.Hostname)
+				hostnameHeader := r.Header.Get("Urso-Hostname")
+				if hostnameHeader != "test-hostname" {
+					t.Errorf("expected hostname %q, got %q", "test-hostname", hostnameHeader)
 				}
 
 				w.WriteHeader(http.StatusOK)
@@ -153,7 +150,7 @@ func TestDashboardAPIClient_GetRunnerConfig(t *testing.T) {
 		Logger:     logger,
 	}
 
-	config, err := client.GetRunnerConfig(context.Background(), "test-id", "test-token")
+	config, err := client.GetRunnerConfig(context.Background(), "test-hostname", "test-id", "test-token")
 
 	if err != nil {
 		t.Fatalf("GetRunnerConfig returned an error: %v", err)
@@ -190,7 +187,7 @@ func TestDashboardAPIClient_GetTokens(t *testing.T) {
 	}
 
 	t.Run("gets register token", func(t *testing.T) {
-		token, err := client.GetRegisterToken(context.Background(), "test-id", "test-token")
+		token, err := client.GetRegisterToken(context.Background(), "test-hostname", "test-id", "test-token")
 		if err != nil {
 			t.Fatalf("GetRegisterToken returned an error: %v", err)
 		}
@@ -200,7 +197,7 @@ func TestDashboardAPIClient_GetTokens(t *testing.T) {
 	})
 
 	t.Run("gets remove token", func(t *testing.T) {
-		token, err := client.GetRemoveToken(context.Background(), "test-id", "test-token")
+		token, err := client.GetRemoveToken(context.Background(), "test-hostname", "test-id", "test-token")
 		if err != nil {
 			t.Fatalf("GetRemoveToken returned an error: %v", err)
 		}

@@ -88,6 +88,12 @@ runners:
 
 // Run executes the main sync logic using the provided configuration and tokens.
 func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
+		hostname = "unknown"
+	}
+
 	managed, machineID, machineToken, err := c.detectManaged()
 	if err != nil {
 		return err
@@ -97,7 +103,7 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 
 	var cfg Config
 	if managed {
-		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, machineID, machineToken)
+		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, hostname, machineID, machineToken)
 	} else {
 		cfg, registerToken, removeToken, err = c.loadLocalRunInputs(configPath, registerToken, removeToken)
 	}
@@ -116,6 +122,12 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	c.logger.Info("starting urso service installation")
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
+		hostname = "unknown"
+	}
+
 	machineID, machineToken, err := c.creds.Load()
 	switch {
 	case err == nil:
@@ -125,7 +137,7 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	case registrationToken == "":
 		return errors.New("urso-registration-token is required for installation")
 	default:
-		machineID, machineToken, err = c.registerMachine(ctx, registrationToken)
+		machineID, machineToken, err = c.registerMachine(ctx, hostname, registrationToken)
 		if err != nil {
 			return err
 		}
@@ -135,7 +147,7 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		}
 	}
 
-	if err := c.performInitialSync(ctx, machineID, machineToken); err != nil {
+	if err := c.performInitialSync(ctx, hostname, machineID, machineToken); err != nil {
 		return err
 	}
 
@@ -203,20 +215,20 @@ func (c *CLI) detectManaged() (bool, string, string, error) {
 	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
 }
 
-func (c *CLI) loadManagedRunInputs(ctx context.Context, cfg Config, machineID, machineToken string) (Config, string, string, error) {
+func (c *CLI) loadManagedRunInputs(ctx context.Context, cfg Config, hostname, machineID, machineToken string) (Config, string, string, error) {
 	c.logger.Info("managed mode detected: fetching runners and tokens from api")
 
-	apiRunners, err := c.api.GetRunnerConfig(ctx, machineID, machineToken)
+	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, machineID, machineToken)
 	if err != nil {
 		return Config{}, "", "", fmt.Errorf("error fetching runner config: %w", err)
 	}
 	cfg.Runners = apiRunners
 
-	registerToken, err := c.api.GetRegisterToken(ctx, machineID, machineToken)
+	registerToken, err := c.api.GetRegisterToken(ctx, hostname, machineID, machineToken)
 	if err != nil {
 		return Config{}, "", "", fmt.Errorf("error fetching github register token: %w", err)
 	}
-	removeToken, err := c.api.GetRemoveToken(ctx, machineID, machineToken)
+	removeToken, err := c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
 	if err != nil {
 		return Config{}, "", "", fmt.Errorf("error fetching github remove token: %w", err)
 	}
@@ -234,12 +246,12 @@ func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
 	return nil
 }
 
-func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
+func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string) error {
 	rootDir := filepath.Join(c.store.UrsoHome(), "runners")
 
 	// Fetch the runner config from the API
 	c.logger.Info("fetching runner config from urso api")
-	apiRunners, err := c.api.GetRunnerConfig(ctx, id, token)
+	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, id, token)
 	if err != nil {
 		return fmt.Errorf("failed to get runner config: %w", err)
 	}
@@ -250,11 +262,11 @@ func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
 
 	// Fetch GitHub tokens from API
 	c.logger.Info("fetching github tokens from urso api")
-	ghRegisterToken, err := c.api.GetRegisterToken(ctx, id, token)
+	ghRegisterToken, err := c.api.GetRegisterToken(ctx, hostname, id, token)
 	if err != nil {
 		return fmt.Errorf("failed to get github register token: %w", err)
 	}
-	ghRemoveToken, err := c.api.GetRemoveToken(ctx, id, token)
+	ghRemoveToken, err := c.api.GetRemoveToken(ctx, hostname, id, token)
 	if err != nil {
 		return fmt.Errorf("failed to get github remove token: %w", err)
 	}
@@ -268,12 +280,7 @@ func (c *CLI) performInitialSync(ctx context.Context, id, token string) error {
 	return nil
 }
 
-func (c *CLI) registerMachine(ctx context.Context, registrationToken string) (string, string, error) {
-	hostname, err := os.Hostname()
-	if err != nil {
-		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
-		hostname = "unknown"
-	}
+func (c *CLI) registerMachine(ctx context.Context, hostname, registrationToken string) (string, string, error) {
 	c.logger.Info("registering machine with urso api", "hostname", hostname)
 	machineID, machineToken, err := c.api.RegisterMachine(ctx, registrationToken, hostname)
 	if err != nil {
