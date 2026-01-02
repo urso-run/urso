@@ -102,17 +102,19 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 	}
 
 	var cfg Config
+	var regProvider, remProvider func() (string, error)
+
 	if managed {
-		cfg, registerToken, removeToken, err = c.loadManagedRunInputs(ctx, cfg, hostname, machineID, machineToken)
+		cfg, regProvider, remProvider, err = c.loadManagedRunInputs(ctx, hostname, machineID, machineToken)
 	} else {
-		cfg, registerToken, removeToken, err = c.loadLocalRunInputs(configPath, registerToken, removeToken)
+		cfg, regProvider, remProvider, err = c.loadLocalRunInputs(configPath, registerToken, removeToken)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, registerToken, removeToken); err != nil {
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, regProvider, remProvider); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
 
@@ -212,17 +214,22 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 	// This ensures runners are unregistered if tokens are available via API.
 	hostname, _ := os.Hostname()
 	managed, machineID, machineToken, err := c.detectManaged()
-	removeToken := ""
+
+	var remProvider func() (string, error)
 	if err == nil && managed {
-		c.logger.Info("fetching remove token from API for cleanup")
-		if tok, err := c.api.GetRemoveToken(ctx, hostname, machineID, machineToken); err == nil {
-			removeToken = tok
+		remProvider = func() (string, error) {
+			c.logger.Info("fetching remove token from API for cleanup")
+			return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
 		}
+	} else {
+		remProvider = func() (string, error) { return "", nil }
 	}
 
 	c.logger.Info("performing final cleanup to remove all runners")
 	emptyCfg := Config{Runners: []RunnerConfig{}}
-	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), emptyCfg, "", removeToken); err != nil {
+	noRegProvider := func() (string, error) { return "", nil }
+
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), emptyCfg, noRegProvider, remProvider); err != nil {
 		c.logger.Error("failed to remove runners during uninstall", "error", err)
 		fmt.Fprintf(c.errOut, "Warning: failed to remove some runners: %v\n", err)
 	}
@@ -231,20 +238,20 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 	return nil
 }
 
-func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, string, string, error) {
+func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, func() (string, error), func() (string, error), error) {
 	cfg, err := NewConfig(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Config{}, "", "", fmt.Errorf("config file not found at %s: please run 'urso init' first", configPath)
+			return Config{}, nil, nil, fmt.Errorf("config file not found at %s: please run 'urso init' first", configPath)
 		}
-		return Config{}, "", "", fmt.Errorf("error loading config: %w", err)
+		return Config{}, nil, nil, fmt.Errorf("error loading config: %w", err)
 	}
 
 	if err := c.ensureLocalTokens(registerToken, removeToken); err != nil {
-		return Config{}, "", "", err
+		return Config{}, nil, nil, err
 	}
 
-	return cfg, registerToken, removeToken, nil
+	return cfg, func() (string, error) { return registerToken, nil }, func() (string, error) { return removeToken, nil }, nil
 }
 
 func (c *CLI) detectManaged() (bool, string, string, error) {
@@ -262,25 +269,25 @@ func (c *CLI) detectManaged() (bool, string, string, error) {
 	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
 }
 
-func (c *CLI) loadManagedRunInputs(ctx context.Context, cfg Config, hostname, machineID, machineToken string) (Config, string, string, error) {
-	c.logger.Info("managed mode detected: fetching runners and tokens from api")
+func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, machineToken string) (Config, func() (string, error), func() (string, error), error) {
+	c.logger.Info("managed mode detected: fetching runners from api")
 
 	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, machineID, machineToken)
 	if err != nil {
-		return Config{}, "", "", fmt.Errorf("error fetching runner config: %w", err)
-	}
-	cfg.Runners = apiRunners
-
-	registerToken, err := c.api.GetRegisterToken(ctx, hostname, machineID, machineToken)
-	if err != nil {
-		return Config{}, "", "", fmt.Errorf("error fetching github register token: %w", err)
-	}
-	removeToken, err := c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
-	if err != nil {
-		return Config{}, "", "", fmt.Errorf("error fetching github remove token: %w", err)
+		return Config{}, nil, nil, fmt.Errorf("error fetching runner config: %w", err)
 	}
 
-	return cfg, registerToken, removeToken, nil
+	regProvider := func() (string, error) {
+		c.logger.Info("fetching github register token from urso api")
+		return c.api.GetRegisterToken(ctx, hostname, machineID, machineToken)
+	}
+
+	remProvider := func() (string, error) {
+		c.logger.Info("fetching github remove token from urso api")
+		return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
+	}
+
+	return Config{Runners: apiRunners}, regProvider, remProvider, nil
 }
 
 func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
@@ -316,20 +323,16 @@ func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string
 		return nil
 	}
 
-	// Fetch GitHub tokens from API
-	c.logger.Info("fetching github tokens from urso api")
-	ghRegisterToken, err := c.api.GetRegisterToken(ctx, hostname, id, token)
-	if err != nil {
-		return fmt.Errorf("failed to get github register token: %w", err)
+	regProvider := func() (string, error) {
+		return c.api.GetRegisterToken(ctx, hostname, id, token)
 	}
-	ghRemoveToken, err := c.api.GetRemoveToken(ctx, hostname, id, token)
-	if err != nil {
-		return fmt.Errorf("failed to get github remove token: %w", err)
+	remProvider := func() (string, error) {
+		return c.api.GetRemoveToken(ctx, hostname, id, token)
 	}
 
 	// Run the synchronization logic
 	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, ghRegisterToken, ghRemoveToken); err != nil {
+	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, regProvider, remProvider); err != nil {
 		return fmt.Errorf("failed to sync runners: %w", err)
 	}
 

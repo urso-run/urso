@@ -13,7 +13,7 @@ import (
 
 // Syncer defines the interface for the core synchronization logic.
 type Syncer interface {
-	Sync(ctx context.Context, ursoHome string, cfg Config, registerToken, removeToken string) error
+	Sync(ctx context.Context, ursoHome string, cfg Config, registerProvider, removeProvider func() (string, error)) error
 }
 
 // --- Live Implementations ---
@@ -34,7 +34,7 @@ func NewRunnerSyncer(m MachineInspector, d ActionsDownloader, e RunnerExecutor, 
 }
 
 // Sync contains the core logic for adding and removing runners.
-func (s *RunnerSyncer) Sync(ctx context.Context, ursoHome string, cfg Config, registerToken, removeToken string) error {
+func (s *RunnerSyncer) Sync(ctx context.Context, ursoHome string, cfg Config, registerProvider, removeProvider func() (string, error)) error {
 	for _, r := range cfg.Runners {
 		if err := r.Validate(); err != nil {
 			return fmt.Errorf("invalid runner configuration: %w", err)
@@ -57,8 +57,8 @@ func (s *RunnerSyncer) Sync(ctx context.Context, ursoHome string, cfg Config, re
 
 	runnersToCreate, runnersToRemove := s.plan(cfg, ms)
 
-	errRemove := s.removeRunners(ctx, rootDir, runnersToRemove, removeToken)
-	errCreate := s.createRunners(ctx, rootDir, cacheDir, runnersToCreate, registerToken)
+	errRemove := s.removeRunners(ctx, rootDir, runnersToRemove, removeProvider)
+	errCreate := s.createRunners(ctx, rootDir, cacheDir, runnersToCreate, registerProvider)
 
 	return errors.Join(errRemove, errCreate)
 }
@@ -76,14 +76,18 @@ func (s *RunnerSyncer) plan(cfg Config, ms MachineState) (toCreate []RunnerConfi
 	return toCreate, toRemove
 }
 
-func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runnersToRemove map[string]struct{}, removeToken string) error {
+func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runnersToRemove map[string]struct{}, removeProvider func() (string, error)) error {
 	if len(runnersToRemove) == 0 {
 		return nil
 	}
 	s.logger.Info("runners to remove", "runners", runnersToRemove)
-	if removeToken == "" {
-		s.logger.Warn("github-remove-token not found; proceeding with local-only runner removal")
+
+	removeToken, err := removeProvider()
+	if err != nil {
+		s.logger.Warn("failed to fetch github-remove-token; proceeding with local-only runner removal", "error", err)
+		removeToken = ""
 	}
+
 	var errs []error
 	for name := range runnersToRemove {
 		s.logger.Info("removing runner", "runner", name)
@@ -95,11 +99,16 @@ func (s *RunnerSyncer) removeRunners(ctx context.Context, rootDir string, runner
 	return errors.Join(errs...)
 }
 
-func (s *RunnerSyncer) createRunners(ctx context.Context, rootDir, cacheDir string, runnersToCreate []RunnerConfig, registerToken string) error {
+func (s *RunnerSyncer) createRunners(ctx context.Context, rootDir, cacheDir string, runnersToCreate []RunnerConfig, registerProvider func() (string, error)) error {
 	if len(runnersToCreate) == 0 {
 		return nil
 	}
 	s.logger.Info("runners to create", "runners", runnersToCreate)
+
+	registerToken, err := registerProvider()
+	if err != nil {
+		return fmt.Errorf("error fetching github-register-token: %w", err)
+	}
 	if registerToken == "" {
 		return errors.New("error creating runners: github-register-token not found")
 	}

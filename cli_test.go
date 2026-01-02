@@ -52,12 +52,16 @@ type SpySyncer struct {
 	syncRemoveToken   string
 }
 
-func (s *SpySyncer) Sync(_ context.Context, ursoHome string, cfg Config, registerToken, removeToken string) error {
+func (s *SpySyncer) Sync(_ context.Context, ursoHome string, cfg Config, registerProvider, removeProvider func() (string, error)) error {
 	s.syncCalled = true
 	s.syncUrsoHome = ursoHome
 	s.syncCfg = cfg
-	s.syncRegisterToken = registerToken
-	s.syncRemoveToken = removeToken
+	if registerProvider != nil {
+		s.syncRegisterToken, _ = registerProvider()
+	}
+	if removeProvider != nil {
+		s.syncRemoveToken, _ = removeProvider()
+	}
 	return nil
 }
 
