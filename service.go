@@ -31,12 +31,12 @@ type ServiceManager interface {
 var ErrUnsupportedOS = errors.New("unsupported operating system: only macOS and Linux are supported")
 
 // NewServiceManager creates a new ServiceManager appropriate for the current OS.
-func NewServiceManager(logger *slog.Logger) (ServiceManager, error) {
+func NewServiceManager(logger *slog.Logger, ursoHome string) (ServiceManager, error) {
 	switch runtime.GOOS {
 	case "darwin":
-		return newLaunchdManager(logger), nil
+		return newLaunchdManager(logger, ursoHome), nil
 	case "linux":
-		return newSystemdManager(logger), nil
+		return newSystemdManager(logger, ursoHome), nil
 	default:
 		return nil, ErrUnsupportedOS
 	}
@@ -60,23 +60,23 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ThrottleInterval</key>
     <integer>60</integer>
     <key>StandardOutPath</key>
-    <string>{{.HomeDir}}/Library/Logs/{{.ServiceName}}.log</string>
+    <string>{{.UrsoHome}}/logs/urso.log</string>
     <key>StandardErrorPath</key>
-    <string>{{.HomeDir}}/Library/Logs/{{.ServiceName}}.log</string>
+    <string>{{.UrsoHome}}/logs/urso.log</string>
 </dict>
 </plist>
 `
 
 const systemdTemplate = `[Unit]
-Description=Urso-run
+Description={{.ServiceName}}
 After=network.target
 
 [Service]
 ExecStart={{.ExecutablePath}} run
 Restart=always
 RestartSec=60
-StandardOutput=append:{{.HomeDir}}/.urso/logs/urso.log
-StandardError=append:{{.HomeDir}}/.urso/logs/urso.log
+StandardOutput=append:{{.UrsoHome}}/logs/urso.log
+StandardError=append:{{.UrsoHome}}/logs/urso.log
 
 [Install]
 WantedBy=default.target
@@ -84,12 +84,13 @@ WantedBy=default.target
 
 // LaunchdManager implements the ServiceManager interface for macOS systems using launchd.
 type LaunchdManager struct {
-	logger *slog.Logger
+	logger   *slog.Logger
+	ursoHome string
 }
 
 // newLaunchdManager creates a new LaunchdManager.
-func newLaunchdManager(logger *slog.Logger) *LaunchdManager {
-	return &LaunchdManager{logger: logger}
+func newLaunchdManager(logger *slog.Logger, ursoHome string) *LaunchdManager {
+	return &LaunchdManager{logger: logger, ursoHome: ursoHome}
 }
 
 // Install creates a launchd plist file, loads it, and starts the service.
@@ -155,23 +156,24 @@ func (l *LaunchdManager) createPlistFile(executablePath, destPath string) error 
 		return fmt.Errorf("failed to parse launchd template: %w", err)
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
-	}
-
 	data := struct {
 		ServiceName    string
 		ExecutablePath string
-		HomeDir        string
+		UrsoHome       string
 	}{
 		ServiceName:    ServiceName,
 		ExecutablePath: executablePath,
-		HomeDir:        homeDir,
+		UrsoHome:       l.ursoHome,
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0750); err != nil {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
+	}
+
+	// Also ensure log directory exists
+	logDir := filepath.Join(l.ursoHome, "logs")
+	if err := os.MkdirAll(logDir, 0700); err != nil {
+		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	file, err := os.Create(destPath)
@@ -204,11 +206,12 @@ func (l *LaunchdManager) runLaunchctl(ctx context.Context, args ...string) error
 
 // SystemdManager implements the ServiceManager interface for Linux systems using systemd.
 type SystemdManager struct {
-	logger *slog.Logger
+	logger   *slog.Logger
+	ursoHome string
 }
 
-func newSystemdManager(logger *slog.Logger) *SystemdManager {
-	return &SystemdManager{logger: logger}
+func newSystemdManager(logger *slog.Logger, ursoHome string) *SystemdManager {
+	return &SystemdManager{logger: logger, ursoHome: ursoHome}
 }
 
 // Install creates a systemd service file, reloads the daemon, and starts the service.
@@ -271,17 +274,12 @@ func (s *SystemdManager) createServiceFile(executablePath, destPath string) erro
 		return fmt.Errorf("failed to parse systemd template: %w", err)
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
-	}
-
 	data := struct {
 		ExecutablePath string
-		HomeDir        string
+		UrsoHome       string
 	}{
 		ExecutablePath: executablePath,
-		HomeDir:        homeDir,
+		UrsoHome:       s.ursoHome,
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
@@ -289,7 +287,7 @@ func (s *SystemdManager) createServiceFile(executablePath, destPath string) erro
 	}
 
 	// Also ensure log directory exists
-	logDir := filepath.Join(homeDir, ".urso", "logs")
+	logDir := filepath.Join(s.ursoHome, "logs")
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}

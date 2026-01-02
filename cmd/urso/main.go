@@ -71,7 +71,7 @@ func newRootCmd() *cobra.Command {
 		urso.NewLiveRunnerExecutor(out),
 		logger,
 	)
-	sm, err := urso.NewServiceManager(logger)
+	sm, err := urso.NewServiceManager(logger, ursoHome)
 	if err != nil {
 		logger.Warn("service manager unavailable", "error", err)
 	}
