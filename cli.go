@@ -21,6 +21,7 @@ type CLI struct {
 	sm     ServiceManager
 	api    APIClient
 	creds  CredentialStore
+	vector VectorObs
 	logger *slog.Logger
 }
 
@@ -34,6 +35,7 @@ func NewCLI(
 	sm ServiceManager,
 	api APIClient,
 	creds CredentialStore,
+	vector VectorObs,
 	logger *slog.Logger,
 ) *CLI {
 	return &CLI{
@@ -45,6 +47,7 @@ func NewCLI(
 		sm:     sm,
 		api:    api,
 		creds:  creds,
+		vector: vector,
 		logger: logger,
 	}
 }
@@ -112,6 +115,13 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, registerToken, removeToken); err != nil {
 		return fmt.Errorf("error synchronizing runners: %w", err)
 	}
+
+	if managed && c.vector != nil {
+		if err := c.vector.UpdateConfig(machineID, machineToken, cfg.Runners); err != nil {
+			c.logger.Warn("failed to update vector configuration", "error", err)
+		}
+	}
+
 	return nil
 }
 
@@ -158,9 +168,21 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	}
 
 	c.logger.Info("installing system service")
-	if err := c.sm.Install(ctx, executablePath); err != nil {
+	if err := c.sm.Install(ctx, ServiceConfig{
+		Name:           DefaultUrsoServiceName,
+		ExecutablePath: executablePath,
+		Arguments:      []string{"run"},
+		UrsoHome:       c.store.UrsoHome(),
+	}); err != nil {
 		return err
 	}
+
+	if c.vector != nil {
+		if err := c.vector.Install(ctx); err != nil {
+			c.logger.Warn("failed to install vector service", "error", err)
+		}
+	}
+
 	fmt.Fprintln(c.errOut, "launchd logs: ~/Library/Logs/com.urso-run.urso.log")
 	return nil
 }
@@ -175,11 +197,18 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 	}
 
 	// 1. Remove the system service (launchd/systemd)
-	if err := c.sm.Uninstall(ctx); err != nil {
+	if err := c.sm.Uninstall(ctx, DefaultUrsoServiceName); err != nil {
 		return err
 	}
 
-	// 2. Perform a final sync with an empty config to remove all existing runners.
+	// 2. Remove vector service if it exists.
+	if c.vector != nil {
+		if err := c.vector.Uninstall(ctx); err != nil {
+			c.logger.Warn("failed to uninstall vector during urso uninstall", "error", err)
+		}
+	}
+
+	// 3. Perform a final sync with an empty config to remove all existing runners.
 	// This ensures runners are unregistered if tokens are available via API.
 	hostname, _ := os.Hostname()
 	managed, machineID, machineToken, err := c.detectManaged()
@@ -274,6 +303,17 @@ func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string
 
 	cfg := Config{
 		Runners: apiRunners,
+	}
+
+	if c.vector != nil {
+		if err := c.vector.UpdateConfig(id, token, apiRunners); err != nil {
+			c.logger.Warn("failed to update vector configuration", "error", err)
+		}
+	}
+
+	if len(apiRunners) == 0 {
+		c.logger.Info("no runners configured for this machine yet")
+		return nil
 	}
 
 	// Fetch GitHub tokens from API

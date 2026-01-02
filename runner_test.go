@@ -32,6 +32,9 @@ func (s *SpyMachineInspector) RemoveAll(_ string) error {
 	return nil
 }
 func (s *SpyMachineInspector) MkdirAll(_ string) error { return nil }
+func (s *SpyMachineInspector) LookPath(executable string) (string, error) {
+	return "/usr/local/bin/" + executable, nil
+}
 
 type SpyActionsDownloader struct {
 	archivePathToReturn       string

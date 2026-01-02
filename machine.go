@@ -3,6 +3,7 @@ package urso
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -14,6 +15,7 @@ type MachineInspector interface {
 	CreateTempDir(dir, pattern string) (string, error)
 	RemoveAll(path string) error
 	MkdirAll(path string) error
+	LookPath(executable string) (string, error)
 }
 
 // FileSystemMachine is the production implementation of MachineInspector
@@ -65,6 +67,11 @@ func (f *FileSystemMachine) RemoveAll(path string) error {
 // MkdirAll creates a directory path, along with any necessary parents.
 func (f *FileSystemMachine) MkdirAll(path string) error {
 	return os.MkdirAll(path, 0700)
+}
+
+// LookPath searches for an executable named file in the directories named by the PATH environment variable.
+func (f *FileSystemMachine) LookPath(executable string) (string, error) {
+	return exec.LookPath(executable)
 }
 
 func supported(os, arch string) bool {

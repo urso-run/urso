@@ -76,7 +76,12 @@ func newRootCmd() *cobra.Command {
 		logger.Warn("service manager unavailable", "error", err)
 	}
 
-	cli := urso.NewCLI(in, out, errOut, store, syncer, sm, apiClient, credStore, logger)
+	var vector *urso.VectorManager
+	if sm != nil {
+		vector = urso.NewVectorManager(&urso.FileSystemMachine{}, sm, ursoHome, logger)
+	}
+
+	cli := urso.NewCLI(in, out, errOut, store, syncer, sm, apiClient, credStore, vector, logger)
 
 	// Command: init
 	initCmd := &cobra.Command{

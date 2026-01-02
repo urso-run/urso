@@ -9,22 +9,30 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/template"
 )
 
 const (
-	// ServiceName is the default name for the system service.
-	ServiceName = "com.urso-run.urso"
+	// DefaultUrsoServiceName is the default name for the urso system service.
+	DefaultUrsoServiceName = "com.urso-run.urso"
 )
 
-// ServiceManager defines the interface for managing the `urso` system service.
-type ServiceManager interface {
-	// Install configures and enables the system service.
-	// `executablePath` should be the full path to the `urso` binary.
-	Install(ctx context.Context, executablePath string) error
+// ServiceConfig defines the parameters for installing a system service.
+type ServiceConfig struct {
+	Name           string
+	ExecutablePath string
+	Arguments      []string
+	UrsoHome       string
+}
 
-	// Uninstall stops and removes the system service.
-	Uninstall(ctx context.Context) error
+// ServiceManager defines the interface for managing system services across different OSs.
+type ServiceManager interface {
+	// Install configures and enables a system service based on the provided config.
+	Install(ctx context.Context, cfg ServiceConfig) error
+
+	// Uninstall stops and removes a system service by name.
+	Uninstall(ctx context.Context, serviceName string) error
 }
 
 // ErrUnsupportedOS is returned when an operation is attempted on an unsupported operating system.
@@ -47,11 +55,12 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{{.ServiceName}}</string>
+    <string>{{.Name}}</string>
     <key>ProgramArguments</key>
     <array>
         <string>{{.ExecutablePath}}</string>
-        <string>run</string>
+        {{range .Arguments}}<string>{{.}}</string>
+        {{end}}
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -60,23 +69,23 @@ const launchdTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ThrottleInterval</key>
     <integer>60</integer>
     <key>StandardOutPath</key>
-    <string>{{.UrsoHome}}/logs/urso.log</string>
+    <string>{{.UrsoHome}}/logs/{{.Name}}.log</string>
     <key>StandardErrorPath</key>
-    <string>{{.UrsoHome}}/logs/urso.log</string>
+    <string>{{.UrsoHome}}/logs/{{.Name}}.log</string>
 </dict>
 </plist>
 `
 
 const systemdTemplate = `[Unit]
-Description={{.ServiceName}}
+Description={{.Name}}
 After=network.target
 
 [Service]
-ExecStart={{.ExecutablePath}} run
+ExecStart={{.ExecutablePath}} {{.ArgumentsJoined}}
 Restart=always
 RestartSec=60
-StandardOutput=append:{{.UrsoHome}}/logs/urso.log
-StandardError=append:{{.UrsoHome}}/logs/urso.log
+StandardOutput=append:{{.UrsoHome}}/logs/{{.Name}}.log
+StandardError=append:{{.UrsoHome}}/logs/{{.Name}}.log
 
 [Install]
 WantedBy=default.target
@@ -88,89 +97,71 @@ type LaunchdManager struct {
 	ursoHome string
 }
 
-// newLaunchdManager creates a new LaunchdManager.
 func newLaunchdManager(logger *slog.Logger, ursoHome string) *LaunchdManager {
 	return &LaunchdManager{logger: logger, ursoHome: ursoHome}
 }
 
-// Install creates a launchd plist file, loads it, and starts the service.
-func (l *LaunchdManager) Install(ctx context.Context, executablePath string) error {
-	l.logger.Info("installing launchd user agent")
+func (l *LaunchdManager) Install(ctx context.Context, cfg ServiceConfig) error {
+	l.logger.Info("installing launchd user agent", "service", cfg.Name)
 
-	plistPath, err := l.getPlistPath()
+	plistPath, err := l.getPlistPath(cfg.Name)
 	if err != nil {
 		return err
 	}
 
-	l.logger.Info("creating launchd plist file", "path", plistPath)
-	if err := l.createPlistFile(executablePath, plistPath); err != nil {
+	if err := l.createPlistFile(cfg, plistPath); err != nil {
 		return err
 	}
 
-	l.logger.Info("bootstrapping and starting service", "service", ServiceName)
-	// Bootout first in case it's already bootstrapped, to ensure we're using the new definition.
 	uid := os.Getuid()
 	domain := fmt.Sprintf("gui/%d", uid)
 
+	// Bootout first in case it's already bootstrapped
 	if err := l.runLaunchctl(ctx, "bootout", domain, plistPath); err != nil {
-		l.logger.Warn("failed to bootout existing service (this might be expected if it's the first install)", "error", err)
-	}
-	if err := l.runLaunchctl(ctx, "bootstrap", domain, plistPath); err != nil {
-		return fmt.Errorf("failed to bootstrap service: %w", err)
+		l.logger.Debug("failed to bootout existing service (expected if not installed)", "error", err)
 	}
 
-	l.logger.Info("launchd service installed successfully")
+	if err := l.runLaunchctl(ctx, "bootstrap", domain, plistPath); err != nil {
+		return fmt.Errorf("failed to bootstrap service %s: %w", cfg.Name, err)
+	}
+
+	l.logger.Info("launchd service installed successfully", "service", cfg.Name)
 	return nil
 }
 
-// Uninstall stops, unloads, and removes the launchd plist file.
-func (l *LaunchdManager) Uninstall(ctx context.Context) error {
-	l.logger.Info("uninstalling launchd user agent")
+func (l *LaunchdManager) Uninstall(ctx context.Context, serviceName string) error {
+	l.logger.Info("uninstalling launchd user agent", "service", serviceName)
 
-	plistPath, err := l.getPlistPath()
+	plistPath, err := l.getPlistPath(serviceName)
 	if err != nil {
 		return err
 	}
 
-	l.logger.Info("stopping and booting out service", "service", ServiceName)
 	uid := os.Getuid()
 	domain := fmt.Sprintf("gui/%d", uid)
 
 	if err := l.runLaunchctl(ctx, "bootout", domain, plistPath); err != nil {
-		l.logger.Warn("failed to bootout service (this might be expected if it was not loaded)", "error", err)
+		l.logger.Warn("failed to bootout service", "service", serviceName, "error", err)
 	}
 
-	l.logger.Info("removing launchd plist file", "path", plistPath)
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove plist file: %w", err)
 	}
 
-	l.logger.Info("launchd service uninstalled successfully")
+	l.logger.Info("launchd service uninstalled successfully", "service", serviceName)
 	return nil
 }
 
-// createPlistFile generates the launchd plist file from the template.
-func (l *LaunchdManager) createPlistFile(executablePath, destPath string) error {
+func (l *LaunchdManager) createPlistFile(cfg ServiceConfig, destPath string) error {
 	tmpl, err := template.New("launchd").Parse(launchdTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse launchd template: %w", err)
-	}
-
-	data := struct {
-		ServiceName    string
-		ExecutablePath string
-		UrsoHome       string
-	}{
-		ServiceName:    ServiceName,
-		ExecutablePath: executablePath,
-		UrsoHome:       l.ursoHome,
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0750); err != nil {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
-	// Also ensure log directory exists
 	logDir := filepath.Join(l.ursoHome, "logs")
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
@@ -182,19 +173,17 @@ func (l *LaunchdManager) createPlistFile(executablePath, destPath string) error 
 	}
 	defer file.Close()
 
-	return tmpl.Execute(file, data)
+	return tmpl.Execute(file, cfg)
 }
 
-// getPlistPath returns the path where the user-specific launchd plist file should be stored.
-func (l *LaunchdManager) getPlistPath() (string, error) {
+func (l *LaunchdManager) getPlistPath(serviceName string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("could not get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, "Library", "LaunchAgents", ServiceName+".plist"), nil
+	return filepath.Join(homeDir, "Library", "LaunchAgents", serviceName+".plist"), nil
 }
 
-// runLaunchctl executes a launchctl command.
 func (l *LaunchdManager) runLaunchctl(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "launchctl", args...)
 	output, err := cmd.CombinedOutput()
@@ -214,48 +203,42 @@ func newSystemdManager(logger *slog.Logger, ursoHome string) *SystemdManager {
 	return &SystemdManager{logger: logger, ursoHome: ursoHome}
 }
 
-// Install creates a systemd service file, reloads the daemon, and starts the service.
-func (s *SystemdManager) Install(ctx context.Context, executablePath string) error {
-	s.logger.Info("installing systemd user service")
+func (s *SystemdManager) Install(ctx context.Context, cfg ServiceConfig) error {
+	s.logger.Info("installing systemd user service", "service", cfg.Name)
 
-	servicePath, err := s.getServicePath()
+	servicePath, err := s.getServicePath(cfg.Name)
 	if err != nil {
 		return err
 	}
 
-	if err := s.createServiceFile(executablePath, servicePath); err != nil {
+	if err := s.createServiceFile(cfg, servicePath); err != nil {
 		return err
 	}
 
-	s.logger.Info("reloading systemd manager")
 	if err := s.runSystemctl(ctx, "daemon-reload"); err != nil {
 		return err
 	}
 
-	s.logger.Info("enabling and starting service", "service", ServiceName)
-	if err := s.runSystemctl(ctx, "enable", "--now", ServiceName); err != nil {
+	if err := s.runSystemctl(ctx, "enable", "--now", cfg.Name); err != nil {
 		return err
 	}
 
-	s.logger.Info("systemd service installed successfully")
+	s.logger.Info("systemd service installed successfully", "service", cfg.Name)
 	return nil
 }
 
-// Uninstall stops, disables, and removes the systemd service file.
-func (s *SystemdManager) Uninstall(ctx context.Context) error {
-	s.logger.Info("uninstalling systemd user service")
+func (s *SystemdManager) Uninstall(ctx context.Context, serviceName string) error {
+	s.logger.Info("uninstalling systemd user service", "service", serviceName)
 
-	servicePath, err := s.getServicePath()
+	servicePath, err := s.getServicePath(serviceName)
 	if err != nil {
 		return err
 	}
 
-	s.logger.Info("stopping and disabling service", "service", ServiceName)
-	if err := s.runSystemctl(ctx, "disable", "--now", ServiceName); err != nil {
-		s.logger.Warn("failed to disable service", "error", err)
+	if err := s.runSystemctl(ctx, "disable", "--now", serviceName); err != nil {
+		s.logger.Warn("failed to disable service", "service", serviceName, "error", err)
 	}
 
-	s.logger.Info("removing systemd service file", "path", servicePath)
 	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove service file: %w", err)
 	}
@@ -264,29 +247,30 @@ func (s *SystemdManager) Uninstall(ctx context.Context) error {
 		s.logger.Warn("failed to reload systemd daemon", "error", err)
 	}
 
-	s.logger.Info("systemd service uninstalled successfully")
+	s.logger.Info("systemd service uninstalled successfully", "service", serviceName)
 	return nil
 }
 
-func (s *SystemdManager) createServiceFile(executablePath, destPath string) error {
+func (s *SystemdManager) createServiceFile(cfg ServiceConfig, destPath string) error {
 	tmpl, err := template.New("systemd").Parse(systemdTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse systemd template: %w", err)
 	}
 
-	data := struct {
-		ExecutablePath string
-		UrsoHome       string
-	}{
-		ExecutablePath: executablePath,
-		UrsoHome:       s.ursoHome,
+	type systemdData struct {
+		ServiceConfig
+		ArgumentsJoined string
+	}
+
+	data := systemdData{
+		ServiceConfig:   cfg,
+		ArgumentsJoined: strings.Join(cfg.Arguments, " "),
 	}
 
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return fmt.Errorf("failed to create systemd directory: %w", err)
 	}
 
-	// Also ensure log directory exists
 	logDir := filepath.Join(s.ursoHome, "logs")
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("failed to create log directory: %w", err)
@@ -301,12 +285,12 @@ func (s *SystemdManager) createServiceFile(executablePath, destPath string) erro
 	return tmpl.Execute(file, data)
 }
 
-func (s *SystemdManager) getServicePath() (string, error) {
+func (s *SystemdManager) getServicePath(serviceName string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("could not get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".config", "systemd", "user", ServiceName+".service"), nil
+	return filepath.Join(homeDir, ".config", "systemd", "user", serviceName+".service"), nil
 }
 
 func (s *SystemdManager) runSystemctl(ctx context.Context, args ...string) error {
