@@ -116,10 +116,8 @@ nfpms:
           mode: 0644
           mtime: "{{ .CommitDate }}"
     formats:
-      - apk
       - deb
       - rpm
-      - archlinux
     deb:
       lintian_overrides:
         - statically-linked-binary
