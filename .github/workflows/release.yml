@@ -17,7 +17,6 @@ permissions:
 
 jobs:
   release:
-    environment: prod
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2
@@ -55,19 +54,3 @@ jobs:
       - uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8 # v3.1.0
         with:
           subject-checksums: ./dist/checksums.txt
-
-      - name: Authenticate & Install Cloudsmith CLI (OIDC)
-        uses: cloudsmith-io/cloudsmith-cli-action@76c8ff51a34bea1036d9b7708f10a929624a1910 # v2.0.1
-        with:
-          oidc-namespace: ${{ secrets.CLOUDSMITH_OIDC_NAMESPACE }}
-          oidc-service-slug: ${{ secrets.CLOUDSMITH_SERVICE_ACCOUNT }}
-
-      - name: Publish packages to Cloudsmith
-        run: |
-          for pkg in dist/*.deb dist/*.rpm; do
-            echo "package: $pkg"
-            [ -e "$pkg" ] || continue
-            # Extract extension to determine cloudsmith format
-            fmt="${pkg##*.}"
-            cloudsmith push $fmt urso-run/urso/any-distro/any-version "$pkg"
-          done
