@@ -16,6 +16,7 @@ type MachineInspector interface {
 	RemoveAll(path string) error
 	MkdirAll(path string) error
 	LookPath(executable string) (string, error)
+	Hostname() (string, error)
 }
 
 // FileSystemMachine is the production implementation of MachineInspector
@@ -72,6 +73,11 @@ func (f *FileSystemMachine) MkdirAll(path string) error {
 // LookPath searches for an executable named file in the directories named by the PATH environment variable.
 func (f *FileSystemMachine) LookPath(executable string) (string, error) {
 	return exec.LookPath(executable)
+}
+
+// Hostname returns the host name reported by the kernel.
+func (f *FileSystemMachine) Hostname() (string, error) {
+	return os.Hostname()
 }
 
 func supported(os, arch string) bool {

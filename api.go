@@ -48,18 +48,10 @@ type tokenResponse struct {
 	Token string `json:"token"`
 }
 
-// apiRunnerConfig is the representation of a runner from the API.
-type apiRunnerConfig struct {
-	Name   string   `json:"name"`
-	Group  string   `json:"group"`
-	URL    string   `json:"url"`
-	Labels []string `json:"labels"`
-}
-
 // apiConfigResponse is the response from the GET /api/machine/:id endpoint.
 type apiConfigResponse struct {
 	// The rootdir should absolutely not be considered from response. No upside, only downsides (configuration/security)
-	Runners []apiRunnerConfig `json:"runners"`
+	Runners []RunnerConfig `json:"runners"`
 }
 
 // --- Method Implementations ---
@@ -126,13 +118,7 @@ func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, hostname, id, 
 		return nil, fmt.Errorf("failed to decode get config response: %w", err)
 	}
 
-	// Map from the API representation to our internal RunnerConfig struct.
-	runners := make([]RunnerConfig, len(apiResp.Runners))
-	for i, r := range apiResp.Runners {
-		runners[i] = RunnerConfig(r)
-	}
-
-	return runners, nil
+	return apiResp.Runners, nil
 }
 
 // GetRegisterToken fetches a GitHub registration token from the Urso API.

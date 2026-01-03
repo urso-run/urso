@@ -93,7 +93,7 @@ func (l *LiveRunnerExecutor) runSvc(ctx context.Context, dir string, action stri
 	var cmd *exec.Cmd
 	// svc.sh MUST run as root on Linux.
 	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
-		cmd = exec.CommandContext(ctx, "sudo", "./svc.sh", action)
+		cmd = exec.CommandContext(ctx, "sudo", "-n", "./svc.sh", action)
 	} else {
 		cmd = exec.CommandContext(ctx, "./svc.sh", action)
 	}

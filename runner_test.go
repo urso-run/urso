@@ -17,6 +17,10 @@ type SpyMachineInspector struct {
 	RemoveAllWasCalled       bool
 }
 
+func (s *SpyMachineInspector) Hostname() (string, error) {
+	return "test-hostname", nil
+}
+
 func (s *SpyMachineInspector) GetCurrentState(rootDir string) (MachineState, error) {
 	s.GetCurrentStateWasCalled = true
 	s.GetCurrentStateRootDir = rootDir

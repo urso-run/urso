@@ -65,8 +65,9 @@ func newRootCmd() *cobra.Command {
 		Logger:     logger,
 	}
 	credStore := urso.NewFileSystemCredentialStore(ursoHome)
+	machine := &urso.FileSystemMachine{}
 	syncer := urso.NewRunnerSyncer(
-		&urso.FileSystemMachine{},
+		machine,
 		urso.NewGithubAPIDownloader(httpClient, logger),
 		urso.NewLiveRunnerExecutor(out),
 		logger,
@@ -78,10 +79,10 @@ func newRootCmd() *cobra.Command {
 
 	var vector *urso.VectorManager
 	if sm != nil {
-		vector = urso.NewVectorManager(&urso.FileSystemMachine{}, sm, ursoHome, logger)
+		vector = urso.NewVectorManager(machine, sm, ursoHome, logger)
 	}
 
-	cli := urso.NewCLI(in, out, errOut, store, syncer, sm, apiClient, credStore, vector, logger)
+	cli := urso.NewCLI(in, out, errOut, store, syncer, machine, sm, apiClient, credStore, vector, logger)
 
 	// Command: init
 	initCmd := &cobra.Command{

@@ -136,7 +136,7 @@ func TestDashboardAPIClient_GetRunnerConfig(t *testing.T) {
 
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(apiConfigResponse{
-			Runners: []apiRunnerConfig{{Name: "api-runner"}},
+			Runners: []RunnerConfig{{Name: "api-runner"}},
 		}); err != nil {
 			t.Fatalf("failed to write response: %v", err)
 		}

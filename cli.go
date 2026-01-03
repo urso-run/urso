@@ -9,20 +9,23 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // CLI holds the logic for the urso application, decoupled from the OS via interfaces.
 type CLI struct {
-	in     io.Reader
-	out    io.Writer
-	errOut io.Writer
-	store  ConfigStore
-	syncer Syncer
-	sm     ServiceManager
-	api    APIClient
-	creds  CredentialStore
-	vector VectorObs
-	logger *slog.Logger
+	in      io.Reader
+	out     io.Writer
+	errOut  io.Writer
+	store   ConfigStore
+	syncer  Syncer
+	machine MachineInspector
+	sm      ServiceManager
+	api     APIClient
+	creds   CredentialStore
+	vector  VectorObs
+	logger  *slog.Logger
 }
 
 // NewCLI creates a new CLI with the given dependencies.
@@ -32,6 +35,7 @@ func NewCLI(
 	errOut io.Writer,
 	store ConfigStore,
 	syncer Syncer,
+	machine MachineInspector,
 	sm ServiceManager,
 	api APIClient,
 	creds CredentialStore,
@@ -39,25 +43,27 @@ func NewCLI(
 	logger *slog.Logger,
 ) *CLI {
 	return &CLI{
-		in:     in,
-		out:    out,
-		errOut: errOut,
-		store:  store,
-		syncer: syncer,
-		sm:     sm,
-		api:    api,
-		creds:  creds,
-		vector: vector,
-		logger: logger,
+		in:      in,
+		out:     out,
+		errOut:  errOut,
+		store:   store,
+		syncer:  syncer,
+		machine: machine,
+		sm:      sm,
+		api:     api,
+		creds:   creds,
+		vector:  vector,
+		logger:  logger,
 	}
 }
 
 // Init handles the logic for the 'init' command.
 func (c *CLI) Init() error {
+	scanner := bufio.NewScanner(c.in)
+
 	if c.store.Exists() {
 		fmt.Fprintf(c.errOut, "Config file already exists at %s. Overwrite? (y/N) ", c.store.Path())
 
-		scanner := bufio.NewScanner(c.in)
 		scanner.Scan()
 		input := scanner.Text()
 
@@ -68,17 +74,48 @@ func (c *CLI) Init() error {
 		}
 	}
 
-	defaultConfig := `# Replace this URL with the GitHub org or repo you want this runner to serve.
-runners:
-  - name: "default-runner"
-    url: "https://github.com/your-org"
-    group: "Default"
-    labels:
-      - self-hosted
-      - macos
-      - arm64
-`
-	err := c.store.Write([]byte(defaultConfig))
+	fmt.Fprint(c.errOut, "GitHub URL (org or repo) [https://github.com/your-org]: ")
+	scanner.Scan()
+	githubURL := strings.TrimSpace(scanner.Text())
+	if githubURL == "" {
+		githubURL = "https://github.com/your-org"
+	}
+
+	fmt.Fprint(c.errOut, "Runner group [Default]: ")
+	scanner.Scan()
+	runnerGroup := strings.TrimSpace(scanner.Text())
+	if runnerGroup == "" {
+		runnerGroup = "Default"
+	}
+
+	fmt.Fprint(c.errOut, "Labels (comma-separated) [self-hosted,macos,arm64]: ")
+	scanner.Scan()
+	labelsInput := strings.TrimSpace(scanner.Text())
+	labels := []string{"self-hosted", "macos", "arm64"}
+	if labelsInput != "" {
+		labels = strings.Split(labelsInput, ",")
+		for i := range labels {
+			labels[i] = strings.TrimSpace(labels[i])
+		}
+	}
+
+	cfg := Config{
+		Runners: []RunnerConfig{
+			{
+				Name:   "default-runner",
+				URL:    githubURL,
+				Group:  runnerGroup,
+				Labels: labels,
+			},
+		},
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	err = c.store.Write(data)
 	if err != nil {
 		return err
 	}
@@ -90,11 +127,7 @@ runners:
 
 // Run executes the main sync logic using the provided configuration and tokens.
 func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken string) error {
-	hostname, err := os.Hostname()
-	if err != nil {
-		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
-		hostname = "unknown"
-	}
+	hostname := c.hostname()
 
 	managed, machineID, machineToken, err := c.detectManaged()
 	if err != nil {
@@ -131,12 +164,9 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	c.logger.Info("starting urso service installation")
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		c.logger.Warn("could not get machine hostname, using unknown", "error", err)
-		hostname = "unknown"
-	}
+	hostname := c.hostname()
 
+	mid, mtok, err := c.creds.Load()
 	switch {
 	case err == nil:
 		c.logger.Info("using existing machine credentials")
@@ -152,6 +182,14 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		c.logger.Info("saving machine credentials")
 		if err := c.creds.Save(machineID, machineToken); err != nil {
 			return fmt.Errorf("failed to save credentials: %w", err)
+		}
+	}
+
+	if err == nil && c.vector != nil {
+		// We use an empty runner list for the initial config;
+		// it will be updated by the background service on its first 'run'.
+		if err := c.vector.UpdateConfig(mid, mtok, nil); err != nil {
+			c.logger.Warn("failed to initialize vector configuration", "error", err)
 		}
 	}
 
@@ -207,7 +245,8 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 
 	// 3. Perform a final sync with an empty config to remove all existing runners.
 	// This ensures runners are unregistered if tokens are available via API.
-	hostname, _ := os.Hostname()
+	hostname := c.hostname()
+
 	managed, machineID, machineToken, err := c.detectManaged()
 
 	var remProvider func() (string, error)
@@ -231,6 +270,15 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 
 	fmt.Fprintln(c.errOut, "urso service uninstalled successfully")
 	return nil
+}
+
+func (c *CLI) hostname() string {
+	h, err := c.machine.Hostname()
+	if err != nil {
+		c.logger.Warn("could not get machine hostname from inspector, using unknown", "error", err)
+		return "unknown"
+	}
+	return h
 }
 
 func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, func() (string, error), func() (string, error), error) {

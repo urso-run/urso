@@ -201,7 +201,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("creates config file if it does not exist", func(t *testing.T) {
 		in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: false, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, nil, logger)
+		cli := NewCLI(in, out, errOut, store, nil, &SpyMachineInspector{}, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -214,7 +214,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("aborts if config file exists and user says no", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("n\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, nil, logger)
+		cli := NewCLI(in, out, errOut, store, nil, &SpyMachineInspector{}, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -227,7 +227,7 @@ func TestCLI_Init(t *testing.T) {
 	t.Run("overwrites if config file exists and user says yes", func(t *testing.T) {
 		in, out, errOut := strings.NewReader("y\n"), &bytes.Buffer{}, &bytes.Buffer{}
 		store := &SpyConfigStore{existsResult: true, pathResult: "/test/config.yaml"}
-		cli := NewCLI(in, out, errOut, store, nil, nil, nil, nil, nil, logger)
+		cli := NewCLI(in, out, errOut, store, nil, &SpyMachineInspector{}, nil, nil, nil, nil, logger)
 		err := cli.Init()
 		if err != nil {
 			t.Fatalf("Init() returned an unexpected error: %v", err)
@@ -245,7 +245,7 @@ func TestCLI_Run_LocalSuccess(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	store := &SpyConfigStore{homeResult: tmpDir}
-	cli := NewCLI(in, out, errOut, store, spySyncer, nil, nil, nil, nil, logger)
+	cli := NewCLI(in, out, errOut, store, spySyncer, &SpyMachineInspector{}, nil, nil, nil, nil, logger)
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte("runners: []"), 0600); err != nil {
@@ -276,7 +276,7 @@ func TestCLI_Run_ManagedUpdatesVector(t *testing.T) {
 	spyVector := &SpyVectorManager{}
 	tmpDir := t.TempDir()
 	store := &SpyConfigStore{homeResult: tmpDir}
-	cli := NewCLI(in, out, errOut, store, spySyncer, nil, spyAPI, spyCreds, spyVector, logger)
+	cli := NewCLI(in, out, errOut, store, spySyncer, &SpyMachineInspector{}, nil, spyAPI, spyCreds, spyVector, logger)
 
 	if err := cli.Run(context.TODO(), "any.yaml", "", ""); err != nil {
 		t.Fatalf("Run() failed: %v", err)
@@ -319,7 +319,7 @@ func newInstallTestHarness(t *testing.T) installTestHarness {
 		vm:     &SpyVectorManager{},
 	}
 
-	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, h.sm, h.api, h.creds, h.vm, logger)
+	h.cli = NewCLI(in, out, errOut, h.store, h.syncer, &SpyMachineInspector{}, h.sm, h.api, h.creds, h.vm, logger)
 	return h
 }
 

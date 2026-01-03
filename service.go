@@ -158,7 +158,7 @@ func (l *LaunchdManager) createPlistFile(cfg ServiceConfig, destPath string) err
 		return fmt.Errorf("failed to parse launchd template: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(destPath), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0700); err != nil {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
@@ -267,7 +267,7 @@ func (s *SystemdManager) createServiceFile(cfg ServiceConfig, destPath string) e
 		ArgumentsJoined: strings.Join(cfg.Arguments, " "),
 	}
 
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0700); err != nil {
 		return fmt.Errorf("failed to create systemd directory: %w", err)
 	}
 
