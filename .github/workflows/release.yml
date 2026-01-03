@@ -65,6 +65,7 @@ jobs:
       - name: Publish packages to Cloudsmith
         run: |
           for pkg in dist/*.deb dist/*.rpm dist/*.apk dist/*.tar.zst; do
+            echo "package: $pkg"
             [ -e "$pkg" ] || continue
             # Extract extension to determine cloudsmith format
             ext="${pkg##*.}"
