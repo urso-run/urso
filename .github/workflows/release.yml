@@ -17,9 +17,10 @@ permissions:
 
 jobs:
   release:
+    environment: prod
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
         id: homebrew-releaser
         with:
           app-id: ${{ vars.HOMEBREW_RELEASER_APP_ID }}
