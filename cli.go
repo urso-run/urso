@@ -137,7 +137,6 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		hostname = "unknown"
 	}
 
-	machineID, machineToken, err := c.creds.Load()
 	switch {
 	case err == nil:
 		c.logger.Info("using existing machine credentials")
@@ -146,7 +145,7 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 	case registrationToken == "":
 		return errors.New("urso-registration-token is required for installation")
 	default:
-		machineID, machineToken, err = c.registerMachine(ctx, hostname, registrationToken)
+		machineID, machineToken, err := c.registerMachine(ctx, hostname, registrationToken)
 		if err != nil {
 			return err
 		}
@@ -154,10 +153,6 @@ func (c *CLI) Install(ctx context.Context, registrationToken string) error {
 		if err := c.creds.Save(machineID, machineToken); err != nil {
 			return fmt.Errorf("failed to save credentials: %w", err)
 		}
-	}
-
-	if err := c.performInitialSync(ctx, hostname, machineID, machineToken); err != nil {
-		return err
 	}
 
 	if c.sm == nil {
@@ -297,45 +292,6 @@ func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
 	if removeToken == "" {
 		return errors.New("github-remove-token is required in local mode")
 	}
-	return nil
-}
-
-func (c *CLI) performInitialSync(ctx context.Context, hostname, id, token string) error {
-	// Fetch the runner config from the API
-	c.logger.Info("fetching runner config from urso api")
-	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, id, token)
-	if err != nil {
-		return fmt.Errorf("failed to get runner config: %w", err)
-	}
-
-	cfg := Config{
-		Runners: apiRunners,
-	}
-
-	if c.vector != nil {
-		if err := c.vector.UpdateConfig(id, token, apiRunners); err != nil {
-			c.logger.Warn("failed to update vector configuration", "error", err)
-		}
-	}
-
-	if len(apiRunners) == 0 {
-		c.logger.Info("no runners configured for this machine yet")
-		return nil
-	}
-
-	regProvider := func() (string, error) {
-		return c.api.GetRegisterToken(ctx, hostname, id, token)
-	}
-	remProvider := func() (string, error) {
-		return c.api.GetRemoveToken(ctx, hostname, id, token)
-	}
-
-	// Run the synchronization logic
-	c.logger.Info("performing initial runner synchronization")
-	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), cfg, regProvider, remProvider); err != nil {
-		return fmt.Errorf("failed to sync runners: %w", err)
-	}
-
 	return nil
 }
 

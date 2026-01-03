@@ -336,6 +336,18 @@ func TestCLI_Install(t *testing.T) {
 		if !h.vm.installCalled {
 			t.Error("expected Vector.Install to be called during installation")
 		}
+
+		if h.syncer.syncCalled {
+			t.Error("expected Sync not to be called during installation, letting the service handle it")
+		}
+
+		if h.vm.updateConfigCalled {
+			t.Error("expected Vector.UpdateConfig not to be called during installation")
+		}
+
+		if h.api.getRunnerConfigCalled {
+			t.Error("expected GetRunnerConfig not to be called during installation")
+		}
 	})
 }
 
