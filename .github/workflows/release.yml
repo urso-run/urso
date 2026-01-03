@@ -64,16 +64,10 @@ jobs:
 
       - name: Publish packages to Cloudsmith
         run: |
-          for pkg in dist/*.deb dist/*.rpm dist/*.apk dist/*.tar.zst; do
+          for pkg in dist/*.deb dist/*.rpm; do
             echo "package: $pkg"
             [ -e "$pkg" ] || continue
             # Extract extension to determine cloudsmith format
-            ext="${pkg##*.}"
-            case "$ext" in
-              deb)  fmt="deb" ;;
-              rpm)  fmt="rpm" ;;
-              apk)  fmt="alpine" ;;
-              zst)  fmt="arch" ;;
-            esac
+            fmt="${pkg##*.}"
             cloudsmith push $fmt urso-run/urso/any-distro/any-version "$pkg"
           done
