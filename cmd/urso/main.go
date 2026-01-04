@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -45,7 +44,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	// Persistent flags available to all subcommands
-	rootCmd.PersistentFlags().StringVar(&ursoHome, "urso-home", defaultUrsoHome(), "base directory for urso configuration and state")
+	rootCmd.PersistentFlags().StringVar(&ursoHome, "urso-home", urso.DefaultUrsoHome(), "base directory for urso configuration and state")
 
 	// Standard streams
 	out := os.Stdout
@@ -142,12 +141,4 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(initCmd, runCmd, installCmd, uninstallCmd)
 
 	return rootCmd
-}
-
-func defaultUrsoHome() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".urso"
-	}
-	return filepath.Join(home, ".urso")
 }

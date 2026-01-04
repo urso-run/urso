@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,8 +14,16 @@ const (
 	archiveFilename       = "actions-runner.tar.gz"
 	requestTimeoutSeconds = 30
 	commandTimeoutSeconds = 30
-	DefaultRootDir        = ".urso/runners"
 )
+
+// DefaultUrsoHome returns the default base directory for urso configuration and state.
+func DefaultUrsoHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".urso"
+	}
+	return filepath.Join(home, ".urso")
+}
 
 // RunnerConfig defines the configuration for a single GitHub Actions runner.
 type RunnerConfig struct {
