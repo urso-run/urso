@@ -227,42 +227,42 @@ Workflow logic:
 
 ## Roadmap & Open Questions
 
-### High-priority (from previous TODO + new analysis)
+### Completed Features
 
-1. **Dual-mode `run` implementation (Completed)**
-   - Auto-detect credentials, fetch remote config/tokens when managed.
-   - Handle missing `config.yaml` in managed mode by using defaults.
+1. **Dual-mode Orchestration**
+   - Auto-detects local vs. managed mode based on credentials.
+   - Managed mode pulls runner definitions and tokens from the Urso API.
 
-2. **Idempotent `install` workflow (Completed)**
-   - Skip re-registration if credentials exist.
-   - Ensure launchd always runs `urso run`.
- 
-3. **Urso Home abstraction (Completed)**
-   - Add `--urso-home` flag and removed `--config`.
-   - Centralize path derivation for config, credentials, cache, logs, and tests.
-   - Removed `rootDir` from configuration; it's now strictly relative to Urso Home.
+2. **Unified Configuration & State**
+   - Centralized all state in `--urso-home` (default `~/.urso`).
+   - Consolidated API and local runner definitions into a single internal structure.
+   - Strict YAML validation with `KnownFields` checking.
 
-4. **Documentation refresh (Completed)**
-   - Keep this file as the single source of truth; deprecate `TODO.md` and `HANDOFF_SUMMARY.md`.
+3. **Hardened Service Management**
+   - Idempotent `install` workflow for launchd (macOS) and systemd (Linux).
+   - Use of `sudo -n` (non-interactive) for Linux service operations to prevent background hangs.
+   - Standardized hostname retrieval via `MachineInspector` to gracefully handle kernel errors.
 
-5. **Better validation & error reporting**
-   - YAML known-field checking is enforced.
-   - Improve filesystem error messages (`FileSystemMachine`).
-   - Filter non-runner directories when determining existing runners.
+4. **Security & Permissions**
+   - Runner directories are strictly restricted to `0700` permissions.
+   - Credential files are written with `0600` permissions.
 
-6. **Security tightening**
-   - Restrict runner directory permissions to `0700`.
-   - Honor temporary download directories in `GithubAPIDownloader` or refactor signature.
+5. **Enhanced Developer Experience**
+   - Interactive `urso init` walkthrough for quick local setup.
+   - Automated Vector observability configuration during installation.
 
-7. **Testing gaps**
-   - Add coverage for downloader caching, machine inspector errors, and CLI failure paths.
-   - Introduce service-level tests if feasible.
+### Future Considerations & Open Questions
 
-### Open Questions
- 
-- **Credential rotation?** Define how to rotate machine credentials if compromised (probably via `install` re-run).
+- **Runner Health Checks:** Explore non-invasive ways to verify if a runner is "Idle" and connected to GitHub after service start without creating brittle dependencies on runner log formats.
+- **Credential Rotation:** Define a formal process for rotating machine credentials (currently handled via `install` re-run).
+- **Log Aggregation:** Evaluate if additional structured metadata should be injected into runner log streams for better centralized analysis.
+- **Testing:** Expand coverage for edge cases in network-constrained environments and API retry exhaustion.
 
-Document decisions in this README as they are made.
+### Design Decisions
+
+- **Shell Dependency:** Urso intentionally uses system `tar` and executes the runner's official `config.sh`/`svc.sh` scripts. This ensures maximum compatibility with GitHub's requirements and keeps the Urso binary lean.
+- **Sequential Sync:** Synchronization is performed sequentially to maintain clear, readable logs in local mode and simplify error aggregation.
+- **Minimal Coupling:** Urso avoids parsing internal runner files (like `.runner` or `_diag` logs) to prevent breakage when GitHub updates the runner architecture.
 
 ---
 
