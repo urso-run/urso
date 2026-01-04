@@ -1,0 +1,67 @@
+site_name: Urso
+site_url: https://urso.run
+site_description: macOS & Linux GitHub Actions Runner Orchestrator
+copyright: Copyright &copy; 2026 Urso Team
+
+repo_name: urso-run/urso
+repo_url: https://github.com/urso-run/urso
+edit_uri: edit/main/www/docs/
+
+theme:
+  name: material
+  language: en
+  logo: static/urso-logo.png
+  favicon: static/urso-logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.instant
+    - navigation.tracking
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Introduction: index.md
+  - Installation: install.md
+  - Configuration: configuration.md
+  - Command Reference: commands.md
+  - Advanced:
+      - Service Management: services.md
+      - Security: security.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
