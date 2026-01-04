@@ -81,31 +81,12 @@ func (c *CLI) Init() error {
 		githubURL = "https://github.com/your-org"
 	}
 
-	fmt.Fprint(c.errOut, "Runner group [Default]: ")
-	scanner.Scan()
-	runnerGroup := strings.TrimSpace(scanner.Text())
-	if runnerGroup == "" {
-		runnerGroup = "Default"
-	}
-
-	fmt.Fprint(c.errOut, "Labels (comma-separated) [self-hosted,macos,arm64]: ")
-	scanner.Scan()
-	labelsInput := strings.TrimSpace(scanner.Text())
-	labels := []string{"self-hosted", "macos", "arm64"}
-	if labelsInput != "" {
-		labels = strings.Split(labelsInput, ",")
-		for i := range labels {
-			labels[i] = strings.TrimSpace(labels[i])
-		}
-	}
-
 	cfg := Config{
 		Runners: []RunnerConfig{
 			{
-				Name:   "default-runner",
-				URL:    githubURL,
-				Group:  runnerGroup,
-				Labels: labels,
+				Name:  "urso-runner",
+				URL:   githubURL,
+				Group: "urso",
 			},
 		},
 	}

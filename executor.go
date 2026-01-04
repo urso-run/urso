@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 )
 
 // --- Interfaces for Testability ---
@@ -48,9 +47,6 @@ func (l *LiveRunnerExecutor) Configure(ctx context.Context, dir string, cfg Runn
 	args := []string{"--url", cfg.URL, "--token", token, "--name", cfg.Name, "--unattended", "--replace"}
 	if cfg.Group != "" {
 		args = append(args, "--runnergroup", cfg.Group)
-	}
-	if len(cfg.Labels) > 0 {
-		args = append(args, "--labels", strings.Join(cfg.Labels, ","))
 	}
 
 	cmd := exec.CommandContext(ctx, "./config.sh", args...)

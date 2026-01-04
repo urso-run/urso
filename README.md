@@ -153,10 +153,6 @@ runners:
   - name: "default-runner"
     url: "https://github.com/my-org"
     group: "Default"
-    labels:
-      - self-hosted
-      - macos
-      - arm64
 ```
 
 *Configuration no longer includes `rootDir`; runners are always placed in `runners/` relative to the Urso home directory.*
@@ -164,7 +160,7 @@ runners:
 ### Validation Rules
 
 - Runner `name` and `url` are required.
-- Additional validation (labels, groups) should be tightened in future iterations.
+- Additional validation (groups) should be tightened in future iterations.
 - YAML parsing enforces strict field checking (`KnownFields(true)`) to catch typos or legacy configuration keys (like `rootDir`).
 
 ---
@@ -263,6 +259,7 @@ Workflow logic:
 - **Shell Dependency:** Urso intentionally uses system `tar` and executes the runner's official `config.sh`/`svc.sh` scripts. This ensures maximum compatibility with GitHub's requirements and keeps the Urso binary lean.
 - **Sequential Sync:** Synchronization is performed sequentially to maintain clear, readable logs in local mode and simplify error aggregation.
 - **Minimal Coupling:** Urso avoids parsing internal runner files (like `.runner` or `_diag` logs) to prevent breakage when GitHub updates the runner architecture.
+- **Labels Out of Scope:** Urso does not manage runner labels. Labels can be changed in GitHub separately; enforcing them via Urso would create configuration drift in Local mode and is redundant in Managed mode where they are reconciled automatically by the GitHub Actions service.
 
 ---
 

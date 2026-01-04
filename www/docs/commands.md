@@ -24,7 +24,7 @@ urso init [flags]
 ```
 
 ### Description
-Creates a default `config.yaml` file in your Urso home directory. If a configuration file already exists, Urso will prompt you for confirmation before overwriting it. During initialization, you will be guided through an interactive walkthrough to set up your GitHub URL and initial runner labels.
+Creates a default `config.yaml` file in your Urso home directory. If a configuration file already exists, Urso will prompt you for confirmation before overwriting it. During initialization, you will be guided through an interactive walkthrough to set up your GitHub URL and initial runner configuration.
 
 ---
 

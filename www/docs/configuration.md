@@ -17,17 +17,14 @@ runners:
   - name: "macos-arm64-1"
     url: "https://github.com/your-org"
     group: "Default"
-    labels:
-      - self-hosted
-      - macos
-      - arm64
 
   - name: "macos-arm64-2"
     url: "https://github.com/your-org"
-    labels:
-      - self-hosted
-      - macos
 ```
+
+## Labels
+
+Urso does not manage runner labels. Because labels can be modified directly in the GitHub UI, managing them via Urso would create configuration drift in Local Mode. In Managed Mode, labels are handled automatically by the GitHub Actions service, making explicit configuration within Urso redundant.
 
 ### Environment Variables
 
