@@ -265,7 +265,7 @@ Workflow logic:
 
 ## Commercial Use
 
-For use within a business or commercial environment, a commercial license is required. Contact the Urso team via [https://urso.run](https://urso.run) for pricing and licensing details.
+For use within a business or commercial environment, a commercial license is required. Contact the Urso team via [hello@urso.run](mailto:hello@urso.run) or [https://urso.run](https://urso.run) for pricing and licensing details.
 
 ---
 
@@ -276,5 +276,7 @@ For use within a business or commercial environment, a commercial license is req
 3. Run `make lint` and `make test` before submitting a PR.
 4. Keep README as the authoritative documentation; avoid divergent docs in separate files.
 5. Follow the coding patterns already established (interfaces for side effects, table-driven tests, context propagation).
+
+For direct inquiries, you can reach out to [adam@urso.run](mailto:adam@urso.run) or [petr@urso.run](mailto:petr@urso.run).
 
 Thanks for helping improve Urso!

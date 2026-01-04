@@ -31,3 +31,7 @@ To get started with Urso, follow our [Installation Guide](install.md) to set up 
 - **[Command Reference](commands.md):** CLI usage and flag documentation.
 - **[Service Management](services.md):** Deep dive into how Urso manages background agents.
 - **[Security](security.md):** Security considerations and hardening best practices.
+
+## Contact
+
+For inquiries or support, you can reach out to the Urso team at [hello@urso.run](mailto:hello@urso.run) or contact the founders directly: [adam@urso.run](mailto:adam@urso.run) or [petr@urso.run](mailto:petr@urso.run).

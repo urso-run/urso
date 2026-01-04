@@ -65,4 +65,6 @@ Urso uses the **README.md** and the **www/** directory as the authoritative sour
 
 If you find a bug or have a feature request, please [open an issue](https://github.com/urso-run/urso/issues) on GitHub. For security-related reports, please refer to our [Security Policy](security.md).
 
+For direct inquiries or specific questions, you can reach out to the team at [hello@urso.run](mailto:hello@urso.run) or contact [adam@urso.run](mailto:adam@urso.run) or [petr@urso.run](mailto:petr@urso.run) directly.
+
 Thanks for helping improve Urso!
