@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
 site_name: Urso
 site_url: https://urso.run
 site_description: macOS & Linux GitHub Actions Runner Orchestrator
