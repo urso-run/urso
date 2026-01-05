@@ -119,7 +119,11 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 	var regProvider, remProvider func() (string, error)
 
 	if managed {
-		cfg, regProvider, remProvider, err = c.loadManagedRunInputs(ctx, hostname, machineID, machineToken)
+		var deletedAt string
+		cfg, deletedAt, regProvider, remProvider, err = c.loadManagedRunInputs(ctx, hostname, machineID, machineToken)
+		if err == nil && deletedAt != "" {
+			return c.handleRemoteDeletion(ctx, hostname, machineID, machineToken)
+		}
 	} else {
 		cfg, regProvider, remProvider, err = c.loadLocalRunInputs(configPath, registerToken, removeToken)
 	}
@@ -293,12 +297,12 @@ func (c *CLI) detectManaged() (bool, string, string, error) {
 	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
 }
 
-func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, machineToken string) (Config, func() (string, error), func() (string, error), error) {
+func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, machineToken string) (Config, string, func() (string, error), func() (string, error), error) {
 	c.logger.Info("managed mode detected: fetching runners from api")
 
-	apiRunners, err := c.api.GetRunnerConfig(ctx, hostname, machineID, machineToken)
+	apiRunners, deletedAt, err := c.api.GetRunnerConfig(ctx, hostname, machineID, machineToken)
 	if err != nil {
-		return Config{}, nil, nil, fmt.Errorf("error fetching runner config: %w", err)
+		return Config{}, "", nil, nil, fmt.Errorf("error fetching runner config: %w", err)
 	}
 
 	regProvider := func() (string, error) {
@@ -311,7 +315,7 @@ func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, mac
 		return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
 	}
 
-	return Config{Runners: apiRunners}, regProvider, remProvider, nil
+	return Config{Runners: apiRunners}, deletedAt, regProvider, remProvider, nil
 }
 
 func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
@@ -320,6 +324,20 @@ func (c *CLI) ensureLocalTokens(registerToken, removeToken string) error {
 	}
 	if removeToken == "" {
 		return errors.New("github-remove-token is required in local mode")
+	}
+	return nil
+}
+
+func (c *CLI) handleRemoteDeletion(ctx context.Context, hostname, machineID, machineToken string) error {
+	c.logger.Info("machine marked as deleted in dashboard, uninstalling")
+	if err := c.Uninstall(ctx); err != nil {
+		return fmt.Errorf("failed to uninstall during remote deletion: %w", err)
+	}
+	if err := c.api.DeleteMachine(ctx, hostname, machineID, machineToken); err != nil {
+		c.logger.Warn("failed to notify API of machine deletion", "error", err)
+	}
+	if err := c.creds.Delete(); err != nil {
+		return fmt.Errorf("failed to delete credentials: %w", err)
 	}
 	return nil
 }

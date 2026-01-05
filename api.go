@@ -13,9 +13,10 @@ import (
 // APIClient defines the interface for communicating with the Urso Dashboard API.
 type APIClient interface {
 	RegisterMachine(ctx context.Context, jwt, hostname string) (machineID string, machineToken string, err error)
-	GetRunnerConfig(ctx context.Context, hostname, id, token string) ([]RunnerConfig, error)
+	GetRunnerConfig(ctx context.Context, hostname, id, token string) ([]RunnerConfig, string, error)
 	GetRegisterToken(ctx context.Context, hostname, id, token string) (string, error)
 	GetRemoveToken(ctx context.Context, hostname, id, token string) (string, error)
+	DeleteMachine(ctx context.Context, hostname, id, token string) error
 }
 
 // --- Real Implementations ---
@@ -51,7 +52,8 @@ type tokenResponse struct {
 // apiConfigResponse is the response from the GET /api/machine/:id endpoint.
 type apiConfigResponse struct {
 	// The rootdir should absolutely not be considered from response. No upside, only downsides (configuration/security)
-	Runners []RunnerConfig `json:"runners"`
+	Runners   []RunnerConfig `json:"runners"`
+	DeletedAt string         `json:"deleted_at"`
 }
 
 // --- Method Implementations ---
@@ -93,11 +95,11 @@ func (c *DashboardAPIClient) RegisterMachine(ctx context.Context, jwt, hostname 
 }
 
 // GetRunnerConfig fetches the runner configuration from the Urso API.
-func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, hostname, id, token string) ([]RunnerConfig, error) {
+func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, hostname, id, token string) ([]RunnerConfig, string, error) {
 	url := fmt.Sprintf("%s/api/machine/%s", c.BaseURL, id)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create get config request: %w", err)
+		return nil, "", fmt.Errorf("failed to create get config request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
@@ -105,20 +107,43 @@ func (c *DashboardAPIClient) GetRunnerConfig(ctx context.Context, hostname, id, 
 
 	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to perform get config request: %w", err)
+		return nil, "", fmt.Errorf("failed to perform get config request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code from get config: %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("unexpected status code from get config: %d", resp.StatusCode)
 	}
 
 	var apiResp apiConfigResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("failed to decode get config response: %w", err)
+		return nil, "", fmt.Errorf("failed to decode get config response: %w", err)
 	}
 
-	return apiResp.Runners, nil
+	return apiResp.Runners, apiResp.DeletedAt, nil
+}
+
+// DeleteMachine removes the machine registration from the Urso API.
+func (c *DashboardAPIClient) DeleteMachine(ctx context.Context, hostname, id, token string) error {
+	url := fmt.Sprintf("%s/api/machine/%s", c.BaseURL, id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete machine request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Urso-Hostname", hostname)
+
+	resp, err := c.doWithRetry(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to perform delete machine request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("unexpected status code from delete machine: %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 // GetRegisterToken fetches a GitHub registration token from the Urso API.

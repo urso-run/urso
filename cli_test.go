@@ -91,10 +91,12 @@ type SpyAPIClient struct {
 	getRunnerConfigCalled   bool
 	getRegisterTokenCalled  bool
 	getRemoveTokenCalled    bool
+	deleteMachineCalled     bool
 
 	machineID           string
 	machineToken        string
 	runnerConfigs       []RunnerConfig
+	deletedAt           string
 	registerToken       string
 	removeToken         string
 	getRunnerConfigErr  error
@@ -108,15 +110,19 @@ func (s *SpyAPIClient) RegisterMachine(_ context.Context, jwt, hostname string) 
 	s.registerMachineHostname = hostname
 	return s.machineID, s.machineToken, nil
 }
-func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _, _ string) ([]RunnerConfig, error) {
+func (s *SpyAPIClient) GetRunnerConfig(_ context.Context, _, _, _ string) ([]RunnerConfig, string, error) {
 	s.getRunnerConfigCalled = true
 	if s.getRunnerConfigErr != nil {
-		return nil, s.getRunnerConfigErr
+		return nil, "", s.getRunnerConfigErr
 	}
 	if s.runnerConfigs != nil {
-		return s.runnerConfigs, nil
+		return s.runnerConfigs, s.deletedAt, nil
 	}
-	return []RunnerConfig{{Name: "api-runner", URL: "http://example.com"}}, nil
+	return []RunnerConfig{{Name: "api-runner", URL: "http://example.com"}}, s.deletedAt, nil
+}
+func (s *SpyAPIClient) DeleteMachine(_ context.Context, _, _, _ string) error {
+	s.deleteMachineCalled = true
+	return nil
 }
 func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _, _ string) (string, error) {
 	s.getRegisterTokenCalled = true
@@ -140,13 +146,14 @@ func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _, _ string) (string
 }
 
 type SpyCredentialStore struct {
-	saveCalled bool
-	loadCalled bool
-	savedID    string
-	savedToken string
-	loadID     string
-	loadToken  string
-	loadErr    error
+	saveCalled   bool
+	loadCalled   bool
+	deleteCalled bool
+	savedID      string
+	savedToken   string
+	loadID       string
+	loadToken    string
+	loadErr      error
 }
 
 func (s *SpyCredentialStore) Save(id, token string) error {
@@ -164,6 +171,10 @@ func (s *SpyCredentialStore) Load() (string, string, error) {
 		return "", "", ErrMissingCredentials
 	}
 	return s.loadID, s.loadToken, nil
+}
+func (s *SpyCredentialStore) Delete() error {
+	s.deleteCalled = true
+	return nil
 }
 
 type SpyVectorManager struct {
@@ -290,6 +301,46 @@ func TestCLI_Run_ManagedUpdatesVector(t *testing.T) {
 	}
 	if len(spyVector.runners) != 1 || spyVector.runners[0].Name != "api-runner" {
 		t.Errorf("expected runner 'api-runner' passed to vector, got %+v", spyVector.runners)
+	}
+}
+
+func TestCLI_Run_RemoteDeletion(t *testing.T) {
+	in, out, errOut := &bytes.Buffer{}, &bytes.Buffer{}, &bytes.Buffer{}
+	spySyncer := &SpySyncer{}
+	logger := slog.New(slog.DiscardHandler)
+	spyAPI := &SpyAPIClient{
+		machineID:    "mid",
+		machineToken: "mtok",
+		deletedAt:    "2023-10-27T10:00:00Z",
+	}
+	spyCreds := &SpyCredentialStore{
+		loadID:    "mid",
+		loadToken: "mtok",
+	}
+	spySM := &SpyServiceManager{}
+	spyVector := &SpyVectorManager{}
+	tmpDir := t.TempDir()
+	store := &SpyConfigStore{homeResult: tmpDir}
+	cli := NewCLI(in, out, errOut, store, spySyncer, &SpyMachineInspector{}, spySM, spyAPI, spyCreds, spyVector, logger)
+
+	if err := cli.Run(context.TODO(), "any.yaml", "", ""); err != nil {
+		t.Fatalf("Run() failed: %v", err)
+	}
+
+	if !spySM.uninstallCalled {
+		t.Error("expected service manager Uninstall to be called")
+	}
+	if !spyVector.uninstallCalled {
+		t.Error("expected vector Uninstall to be called")
+	}
+	if !spyAPI.deleteMachineCalled {
+		t.Error("expected API DeleteMachine to be called")
+	}
+	if !spyCreds.deleteCalled {
+		t.Error("expected CredentialStore Delete to be called")
+	}
+	if !spySyncer.syncCalled {
+		t.Error("expected Syncer.Sync to be called during uninstall cleanup")
 	}
 }
 

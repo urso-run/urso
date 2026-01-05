@@ -136,7 +136,8 @@ func TestDashboardAPIClient_GetRunnerConfig(t *testing.T) {
 
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(apiConfigResponse{
-			Runners: []RunnerConfig{{Name: "api-runner"}},
+			Runners:   []RunnerConfig{{Name: "api-runner"}},
+			DeletedAt: "2023-10-27T10:00:00Z",
 		}); err != nil {
 			t.Fatalf("failed to write response: %v", err)
 		}
@@ -150,13 +151,46 @@ func TestDashboardAPIClient_GetRunnerConfig(t *testing.T) {
 		Logger:     logger,
 	}
 
-	config, err := client.GetRunnerConfig(context.Background(), "test-hostname", "test-id", "test-token")
+	config, deletedAt, err := client.GetRunnerConfig(context.Background(), "test-hostname", "test-id", "test-token")
 
 	if err != nil {
 		t.Fatalf("GetRunnerConfig returned an error: %v", err)
 	}
 	if len(config) != 1 || config[0].Name != "api-runner" {
 		t.Errorf("unexpected config returned: %+v", config)
+	}
+	if deletedAt != "2023-10-27T10:00:00Z" {
+		t.Errorf("unexpected deletedAt returned: %q", deletedAt)
+	}
+}
+
+func TestDashboardAPIClient_DeleteMachine(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/machine/test-id" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer test-token" {
+			t.Errorf("incorrect auth header: %s", authHeader)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	logger := slog.New(slog.DiscardHandler)
+	client := &DashboardAPIClient{
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		Logger:     logger,
+	}
+
+	err := client.DeleteMachine(context.Background(), "test-hostname", "test-id", "test-token")
+	if err != nil {
+		t.Fatalf("DeleteMachine returned an error: %v", err)
 	}
 }
 

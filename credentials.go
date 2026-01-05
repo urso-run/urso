@@ -13,6 +13,7 @@ import (
 type CredentialStore interface {
 	Save(id, token string) error
 	Load() (id, token string, err error)
+	Delete() error
 }
 
 var ErrMissingCredentials = errors.New("credentials not found")
@@ -80,4 +81,12 @@ func (s *FileSystemCredentialStore) Load() (string, string, error) {
 	}
 
 	return creds.MachineID, creds.MachineToken, nil
+}
+
+// Delete removes the machine credentials from the local filesystem.
+func (s *FileSystemCredentialStore) Delete() error {
+	if err := os.Remove(s.path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove credentials file: %w", err)
+	}
+	return nil
 }
