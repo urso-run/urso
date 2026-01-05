@@ -116,7 +116,7 @@ func (c *CLI) Run(ctx context.Context, configPath, registerToken, removeToken st
 	}
 
 	var cfg Config
-	var regProvider, remProvider func() (string, error)
+	var regProvider, remProvider func([]string) (string, error)
 
 	if managed {
 		var deletedAt string
@@ -234,19 +234,19 @@ func (c *CLI) Uninstall(ctx context.Context) error {
 
 	managed, machineID, machineToken, err := c.detectManaged()
 
-	var remProvider func() (string, error)
+	var remProvider func([]string) (string, error)
 	if err == nil && managed {
-		remProvider = func() (string, error) {
+		remProvider = func(runners []string) (string, error) {
 			c.logger.Info("fetching remove token from API for cleanup")
-			return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
+			return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken, runners)
 		}
 	} else {
-		remProvider = func() (string, error) { return "", nil }
+		remProvider = func(_ []string) (string, error) { return "", nil }
 	}
 
 	c.logger.Info("performing final cleanup to remove all runners")
 	emptyCfg := Config{Runners: []RunnerConfig{}}
-	noRegProvider := func() (string, error) { return "", nil }
+	noRegProvider := func([]string) (string, error) { return "", nil }
 
 	if err := c.syncer.Sync(ctx, c.store.UrsoHome(), emptyCfg, noRegProvider, remProvider); err != nil {
 		c.logger.Error("failed to remove runners during uninstall", "error", err)
@@ -266,7 +266,7 @@ func (c *CLI) hostname() string {
 	return h
 }
 
-func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, func() (string, error), func() (string, error), error) {
+func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) (Config, func([]string) (string, error), func([]string) (string, error), error) {
 	cfg, err := NewConfig(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -279,7 +279,7 @@ func (c *CLI) loadLocalRunInputs(configPath, registerToken, removeToken string) 
 		return Config{}, nil, nil, err
 	}
 
-	return cfg, func() (string, error) { return registerToken, nil }, func() (string, error) { return removeToken, nil }, nil
+	return cfg, func([]string) (string, error) { return registerToken, nil }, func([]string) (string, error) { return removeToken, nil }, nil
 }
 
 func (c *CLI) detectManaged() (bool, string, string, error) {
@@ -297,7 +297,7 @@ func (c *CLI) detectManaged() (bool, string, string, error) {
 	return false, "", "", fmt.Errorf("error loading credentials: %w", err)
 }
 
-func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, machineToken string) (Config, string, func() (string, error), func() (string, error), error) {
+func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, machineToken string) (Config, string, func([]string) (string, error), func([]string) (string, error), error) {
 	c.logger.Info("managed mode detected: fetching runners from api")
 
 	apiRunners, deletedAt, err := c.api.GetRunnerConfig(ctx, hostname, machineID, machineToken)
@@ -305,14 +305,14 @@ func (c *CLI) loadManagedRunInputs(ctx context.Context, hostname, machineID, mac
 		return Config{}, "", nil, nil, fmt.Errorf("error fetching runner config: %w", err)
 	}
 
-	regProvider := func() (string, error) {
+	regProvider := func(runners []string) (string, error) {
 		c.logger.Info("fetching github register token from urso api")
-		return c.api.GetRegisterToken(ctx, hostname, machineID, machineToken)
+		return c.api.GetRegisterToken(ctx, hostname, machineID, machineToken, runners)
 	}
 
-	remProvider := func() (string, error) {
+	remProvider := func(runners []string) (string, error) {
 		c.logger.Info("fetching github remove token from urso api")
-		return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken)
+		return c.api.GetRemoveToken(ctx, hostname, machineID, machineToken, runners)
 	}
 
 	return Config{Runners: apiRunners}, deletedAt, regProvider, remProvider, nil

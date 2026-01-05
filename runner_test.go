@@ -293,8 +293,8 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 				removeToken = tc.removeToken
 			}
 
-			regProvider := func() (string, error) { return registerToken, nil }
-			remProvider := func() (string, error) { return removeToken, nil }
+			regProvider := func([]string) (string, error) { return registerToken, nil }
+			remProvider := func([]string) (string, error) { return removeToken, nil }
 
 			err := h.syncer.Sync(context.TODO(), "/test/urso", tc.config, regProvider, remProvider)
 

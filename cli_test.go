@@ -50,17 +50,18 @@ type SpySyncer struct {
 	syncCfg           Config
 	syncRegisterToken string
 	syncRemoveToken   string
+	syncRunners       []string
 }
 
-func (s *SpySyncer) Sync(_ context.Context, ursoHome string, cfg Config, registerProvider, removeProvider func() (string, error)) error {
+func (s *SpySyncer) Sync(_ context.Context, ursoHome string, cfg Config, registerProvider, removeProvider func([]string) (string, error)) error {
 	s.syncCalled = true
 	s.syncUrsoHome = ursoHome
 	s.syncCfg = cfg
 	if registerProvider != nil {
-		s.syncRegisterToken, _ = registerProvider()
+		s.syncRegisterToken, _ = registerProvider(s.syncRunners)
 	}
 	if removeProvider != nil {
-		s.syncRemoveToken, _ = removeProvider()
+		s.syncRemoveToken, _ = removeProvider(s.syncRunners)
 	}
 	return nil
 }
@@ -124,7 +125,7 @@ func (s *SpyAPIClient) DeleteMachine(_ context.Context, _, _, _ string) error {
 	s.deleteMachineCalled = true
 	return nil
 }
-func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _, _ string) (string, error) {
+func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _, _ string, _ []string) (string, error) {
 	s.getRegisterTokenCalled = true
 	if s.getRegisterTokenErr != nil {
 		return "", s.getRegisterTokenErr
@@ -134,7 +135,7 @@ func (s *SpyAPIClient) GetRegisterToken(_ context.Context, _, _, _ string) (stri
 	}
 	return "api-gh-reg-token", nil
 }
-func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _, _ string) (string, error) {
+func (s *SpyAPIClient) GetRemoveToken(_ context.Context, _, _, _ string, _ []string) (string, error) {
 	s.getRemoveTokenCalled = true
 	if s.getRemoveTokenErr != nil {
 		return "", s.getRemoveTokenErr

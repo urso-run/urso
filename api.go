@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,8 +15,8 @@ import (
 type APIClient interface {
 	RegisterMachine(ctx context.Context, jwt, hostname string) (machineID string, machineToken string, err error)
 	GetRunnerConfig(ctx context.Context, hostname, id, token string) ([]RunnerConfig, string, error)
-	GetRegisterToken(ctx context.Context, hostname, id, token string) (string, error)
-	GetRemoveToken(ctx context.Context, hostname, id, token string) (string, error)
+	GetRegisterToken(ctx context.Context, hostname, id, token string, runners []string) (string, error)
+	GetRemoveToken(ctx context.Context, hostname, id, token string, runners []string) (string, error)
 	DeleteMachine(ctx context.Context, hostname, id, token string) error
 }
 
@@ -147,16 +148,16 @@ func (c *DashboardAPIClient) DeleteMachine(ctx context.Context, hostname, id, to
 }
 
 // GetRegisterToken fetches a GitHub registration token from the Urso API.
-func (c *DashboardAPIClient) GetRegisterToken(ctx context.Context, hostname, id, token string) (string, error) {
-	return c.getToken(ctx, hostname, id, token, "registration-token")
+func (c *DashboardAPIClient) GetRegisterToken(ctx context.Context, hostname, id, token string, runners []string) (string, error) {
+	return c.getToken(ctx, hostname, id, token, "registration-token", runners)
 }
 
 // GetRemoveToken fetches a GitHub removal token from the Urso API.
-func (c *DashboardAPIClient) GetRemoveToken(ctx context.Context, hostname, id, token string) (string, error) {
-	return c.getToken(ctx, hostname, id, token, "remove-token")
+func (c *DashboardAPIClient) GetRemoveToken(ctx context.Context, hostname, id, token string, runners []string) (string, error) {
+	return c.getToken(ctx, hostname, id, token, "remove-token", runners)
 }
 
-func (c *DashboardAPIClient) getToken(ctx context.Context, hostname, id, token, tokenType string) (string, error) {
+func (c *DashboardAPIClient) getToken(ctx context.Context, hostname, id, token, tokenType string, runners []string) (string, error) {
 	url := fmt.Sprintf("%s/api/machine/%s/%s", c.BaseURL, id, tokenType)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -165,6 +166,7 @@ func (c *DashboardAPIClient) getToken(ctx context.Context, hostname, id, token, 
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Urso-Hostname", hostname)
+	req.Header.Set("Urso-Runners", strings.Join(runners, ","))
 
 	resp, err := c.doWithRetry(ctx, req)
 	if err != nil {

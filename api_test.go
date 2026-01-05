@@ -221,7 +221,7 @@ func TestDashboardAPIClient_GetTokens(t *testing.T) {
 	}
 
 	t.Run("gets register token", func(t *testing.T) {
-		token, err := client.GetRegisterToken(context.Background(), "test-hostname", "test-id", "test-token")
+		token, err := client.GetRegisterToken(context.Background(), "test-hostname", "test-id", "test-token", []string{"runner-1", "runner-2"})
 		if err != nil {
 			t.Fatalf("GetRegisterToken returned an error: %v", err)
 		}
@@ -231,7 +231,7 @@ func TestDashboardAPIClient_GetTokens(t *testing.T) {
 	})
 
 	t.Run("gets remove token", func(t *testing.T) {
-		token, err := client.GetRemoveToken(context.Background(), "test-hostname", "test-id", "test-token")
+		token, err := client.GetRemoveToken(context.Background(), "test-hostname", "test-id", "test-token", []string{"runner-1", "runner-2"})
 		if err != nil {
 			t.Fatalf("GetRemoveToken returned an error: %v", err)
 		}
