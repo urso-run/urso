@@ -244,9 +244,27 @@ func TestRunnerSyncer_Sync(t *testing.T) {
 			assert:       assertRemovesRunner,
 		},
 		{
+			name:         "removes runner with unknown status",
+			initialState: MachineState{Runners: map[string]struct{}{"old-runner": {}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "old-runner", URL: "http://example.com", Status: "unknown"}}},
+			assert:       assertRemovesRunner,
+		},
+		{
+			name:         "does not create runner with unknown status",
+			initialState: MachineState{Runners: make(map[string]struct{})},
+			config:       Config{Runners: []RunnerConfig{{Name: "unknown-runner", URL: "http://example.com", Status: "unknown"}}},
+			assert:       assertDoesNothing,
+		},
+		{
 			name:         "does nothing when in sync",
 			initialState: MachineState{Runners: map[string]struct{}{"existing-runner": {}}},
 			config:       Config{Runners: []RunnerConfig{{Name: "existing-runner", URL: "http://example.com"}}},
+			assert:       assertDoesNothing,
+		},
+		{
+			name:         "does nothing when status is active",
+			initialState: MachineState{Runners: map[string]struct{}{"existing-runner": {}}},
+			config:       Config{Runners: []RunnerConfig{{Name: "existing-runner", URL: "http://example.com", Status: "active"}}},
 			assert:       assertDoesNothing,
 		},
 		{

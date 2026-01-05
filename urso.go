@@ -27,9 +27,10 @@ func DefaultUrsoHome() string {
 
 // RunnerConfig defines the configuration for a single GitHub Actions runner.
 type RunnerConfig struct {
-	Name  string `yaml:"name" json:"name"`
-	Group string `yaml:"group" json:"group"`
-	URL   string `yaml:"url" json:"url"`
+	Name   string `yaml:"name" json:"name"`
+	Group  string `yaml:"group" json:"group"`
+	URL    string `yaml:"url" json:"url"`
+	Status string `yaml:"status" json:"status"`
 }
 
 // Validate ensures the runner configuration has all required fields.

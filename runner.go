@@ -67,10 +67,15 @@ func (s *RunnerSyncer) plan(cfg Config, ms MachineState) (toCreate []RunnerConfi
 	toCreate = []RunnerConfig{}
 	toRemove = ms.Runners
 	for _, r := range cfg.Runners {
-		if _, ok := toRemove[r.Name]; !ok {
+		if r.Status == "unknown" {
+			continue
+		}
+
+		if _, ok := toRemove[r.Name]; ok {
+			delete(toRemove, r.Name)
+		} else {
 			toCreate = append(toCreate, r)
 		}
-		delete(toRemove, r.Name)
 	}
 	return toCreate, toRemove
 }
