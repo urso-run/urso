@@ -104,7 +104,7 @@ func (s *RunnerSyncer) createRunners(ctx context.Context, rootDir, cacheDir stri
 	}
 	s.logger.Info("runners to create", "runners", runnersToCreate)
 
-	runnerNames := []string{}
+	runnerNames := make([]string, 0, len(runnersToCreate))
 	for _, runner := range runnersToCreate {
 		runnerNames = append(runnerNames, runner.Name)
 	}
